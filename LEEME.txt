@@ -1,0 +1,47 @@
+FOTOS DE LOS PRODUCTOS
+======================
+
+Guarda cada foto en esta carpeta con el nombre exacto de la lista (todo en minúsculas)
+y con extensión .jpg, .png o .webp. La página la muestra sola.
+
+Si cambias una foto por otra con el mismo nombre y no se actualiza, abre la página
+con Ctrl + F5 (o borra los datos del navegador en el celular).
+
+Recomendado: imagen cuadrada (1:1), de 800 x 800 píxeles o más, y de menos de 300 KB.
+
+LOGO Y PORTADA
+  logo.jpg             Logo del encabezado (se recorta en círculo; mejor cuadrado)
+  portada.jpg          Imagen grande del inicio (horizontal, ej. 1600 x 600)
+  Si no pones estos archivos aquí, la página usa logo.jpg y portada.jpg
+  de la carpeta principal.
+
+COMBOS
+  combo-6.jpg          Combo x6 alitas
+  combo-12.jpg         Combo x12 alitas
+  combo-18.jpg         Combo x18 alitas
+
+ADICIONALES
+  papas.jpg            Papas Cronch
+  platano.jpg          Plátano chips
+  salsa-bbq.jpg        BBQ clásica
+  salsa-miel.jpg       Miel mostaza kids
+  salsa-chip.jpg       Chipotle dulce
+  salsa-aji.jpg        Ají Brava Wing Zone
+
+GASEOSAS 400 ml (una foto por marca)
+  gas-400-coca.jpg     Coca-Cola
+  gas-400-manz.jpg     Manzana Postobón
+  gas-400-colo.jpg     Colombiana
+  gas-400-peps.jpg     Pepsi
+
+GASEOSAS 1.5 L (una foto por marca)
+  gas-1500-coca.jpg    Coca-Cola
+  gas-1500-manz.jpg    Manzana Postobón
+  gas-1500-colo.jpg    Colombiana
+  gas-1500-peps.jpg    Pepsi
+
+COCA-COLA 3 L
+  coca-3000.jpg
+
+Si una marca no tiene foto propia, la página usa la foto general de la gaseosa
+(la de OlaClick). Si tampoco hay, muestra un ícono de llama.
