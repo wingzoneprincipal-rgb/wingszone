@@ -323,12 +323,12 @@ const CONFIG = {
   lowStockAt: 5           // Si el inventario no manda estado, "Pocas unidades" desde este número
 };
 
-/*  Contrato con el Apps Script (para cuando lo conectemos)
+/*  Contrato con el Apps Script (código en apps-script/Codigo.gs)
     GET  {scriptUrl}?action=stock
          -> { "ok": true, "items": { "SKU": { "disponible": 28, "estado": "Disponible",
                                                "precio": 18900, "visible": true } } }
     POST {scriptUrl}  (texto JSON)  { "action":"order", "id", "fecha", "cliente", "telefono",
-                                       "direccion", "correo", "descripcion",
+                                       "direccion", "correo", "descripcion", "cupon", "notas",
                                        "items":[{ "sku", "cantidad" }] }
 */
 
@@ -861,13 +861,15 @@ function sendOrder(){
     f.note ? "*Indicaciones:* " + f.note : null
   ].filter(x => x !== null).join("\n");
 
-  const description = lines.join("; ") + (f.note ? " | Indicaciones: " + f.note : "") + ((cs && cs.ok) ? " | Cupón: " + coupon : "");
+  const description = o.items.map(i => i.qty + " x " + i.name + (i.note ? " (" + i.note + ")" : "")).join("; ")
+                    + (f.note ? " | Indicaciones: " + f.note : "");
+  const couponNote = (cs && cs.ok) ? coupon + (cs.coupon.newOnly ? " (primera compra, verificar)" : "") : "";
   if (CONFIG.scriptUrl){
     try {
       fetch(CONFIG.scriptUrl, { method:"POST", mode:"no-cors", keepalive:true,
         headers:{ "Content-Type":"text/plain;charset=utf-8" },
         body: JSON.stringify({ action:"order", id:o.id, fecha:o.fecha, cliente:f.name, telefono:f.phone,
-          direccion:f.addr, correo:f.mail, descripcion:description,
+          direccion:f.addr, correo:f.mail, descripcion:description, cupon:couponNote, notas:"Pedido desde la página",
           items:o.items.map(i => ({ sku:i.sku, cantidad:i.qty })) }) }).catch(() => {});
     } catch (e) { /* si falla el registro, el pedido igual sale por WhatsApp */ }
   }

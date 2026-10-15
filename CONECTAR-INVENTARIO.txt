@@ -1,0 +1,64 @@
+CONECTAR LA PÁGINA CON EL INVENTARIO (Google Sheets)
+=====================================================
+
+Cuando esté conectado:
+  - La página muestra "Disponible", "Pocas unidades", "Agotado" y "Quedan N"
+    según la hoja Inventario, y usa los precios de la hoja.
+  - Si en la columna "Visible en página" pones No, el producto se oculta de la página.
+  - Cada pedido que se envía por WhatsApp también queda anotado solo en las hojas
+    Pedidos y Detalle, en estado Pendiente (sus unidades quedan reservadas).
+
+Se hace una sola vez y toma unos 10 minutos.
+
+
+1. SUBIR LA HOJA A GOOGLE DRIVE
+   a) Entra a drive.google.com con la cuenta del negocio.
+   b) Nuevo > Subir archivo > elige inventario-wings-zone.xlsx.
+   c) Ábrelo y ve a Archivo > Guardar como hoja de cálculo de Google.
+      (Trabaja siempre en esa copia de Google, no en el .xlsx.)
+   d) Antes de usarla con pedidos reales: cambia los stocks de ejemplo por tu conteo
+      y borra el pedido de ejemplo P-0001 (ver la hoja Instrucciones).
+
+2. PEGAR EL CÓDIGO
+   a) En la hoja de Google: Extensiones > Apps Script.
+   b) Borra todo lo que aparece en el editor y pega el contenido completo del archivo
+      apps-script/Codigo.gs de este repositorio.
+   c) Guarda (ícono de disquete). Ponle de nombre "Wings Zone inventario".
+
+3. PUBLICARLO COMO APLICACIÓN WEB
+   a) Botón azul Implementar > Nueva implementación.
+   b) En el engranaje de "Seleccionar tipo", elige Aplicación web.
+   c) Ejecutar como: Yo (tu correo).
+      Quién tiene acceso: Cualquier persona.
+   d) Implementar. Google te pide permisos: Autorizar acceso > elige tu cuenta >
+      "Configuración avanzada" > "Ir a Wings Zone inventario" > Permitir.
+      (Sale ese aviso porque el código es tuyo y no está publicado en la tienda de Google.)
+   e) Copia la "URL de la aplicación web". Termina en /exec.
+
+4. PROBAR
+   Abre en el navegador esa URL agregando al final  ?action=stock
+   Debe verse un texto que empieza con {"ok":true,"items":{...  con tus productos.
+
+5. PONER LA URL EN LA PÁGINA
+   En index.html, en CONFIG, pega la URL entre las comillas:
+       scriptUrl: "https://script.google.com/macros/s/.../exec",
+   (O mándasela a Claude y la pone por ti.)
+
+
+DÍA A DÍA
+---------
+  - Llega un pedido por WhatsApp: ya está en la hoja Pedidos como Pendiente.
+  - Escribe el valor del domicilio en la columna Domicilio.
+  - Cambia el estado a Confirmado (descuenta el stock) o Cancelado (libera las unidades).
+  - Los cupones salen en la columna Notas. Los de primera compra dicen "verificar".
+  - Compras o mermas: anótalas en la hoja Movimientos.
+
+SI CAMBIAS EL CÓDIGO
+--------------------
+  Implementar > Gestionar implementaciones > lápiz > Versión: Nueva versión > Implementar.
+  Así la URL sigue siendo la misma.
+
+AGREGAR UN PRODUCTO NUEVO
+-------------------------
+  Agrégalo en la página (index.html) y añade su fila en la hoja Inventario con el
+  mismo SKU. Si el SKU no está en la hoja, la página lo muestra pero no lleva su stock.
