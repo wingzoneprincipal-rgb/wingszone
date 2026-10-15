@@ -188,6 +188,16 @@ dialog#cart::backdrop{background:rgba(26,26,26,.6)}
 .field input:focus,.field textarea:focus{border-color:var(--ink);outline:none}
 .field .bad{border-color:var(--bad)}
 .field textarea{min-height:76px;resize:vertical}
+.loc{margin-top:8px}
+.loc-actions{display:flex;flex-wrap:wrap;gap:8px}
+.loc-actions .btn{padding:8px 14px;font-size:.95rem;border-color:var(--ink);color:var(--ink)}
+.loc-actions .btn:hover{background:var(--ink);color:#fff}
+.loc-msg{margin:6px 0 0;font-size:.92rem;color:var(--muted)}
+.loc-msg.ok{color:var(--ok)}
+.loc-msg.bad{color:var(--bad)}
+.loc-msg:empty{display:none}
+.loc-map{height:240px;margin-top:8px;border-radius:8px;border:2px solid var(--line);overflow:hidden;background:var(--mist)}
+.loc-map[hidden]{display:none}
 fieldset.pay{border:0;margin:14px 0 0;padding:0;min-width:0}
 fieldset.pay legend{font-weight:700;padding:0;margin-bottom:6px}
 .pay-opts{display:grid;gap:6px}
@@ -331,7 +341,8 @@ const CONFIG = {
   tiktok:    { url: "https://www.tiktok.com/@wingzone.a", name: "@wingzone.a" },
   email: "",              // Ej: "pedidos@tucorreo.com"
   showStockNumbers: true, // Muestra "Quedan N" cuando hay inventario conectado
-  lowStockAt: 5           // Si el inventario no manda estado, "Pocas unidades" desde este número
+  lowStockAt: 5,          // Si el inventario no manda estado, "Pocas unidades" desde este número
+  mapCenter: [4.5503, -74.5361] // Centro del mapa de entrega (Anapoima) si el cliente no comparte ubicación
 };
 
 /*  Contrato con el Apps Script (código en apps-script/Codigo.gs)
@@ -522,6 +533,7 @@ const optSel = {};        // id de combo -> elecciones actuales en la tarjeta de
 let coupon = "";
 let payment = "";         // id del medio de pago elegido
 let cashWith = "";        // con cuánto paga (solo efectivo)
+let loc = null;           // { lat, lng, acc } ubicación de entrega marcada por el cliente
 let sentInfo = null;
 
 function priceOf(sku){
@@ -767,6 +779,83 @@ function couponState(){
   return { ok:true, msg:c.applied, coupon:c };
 }
 
+/* ============================================================
+   UBICACIÓN DE ENTREGA (opcional)
+   ============================================================
+   "Usar mi ubicación" toma el GPS del celular (pide permiso). "Marcar en el mapa"
+   muestra un mapa (OpenStreetMap) con un pin que el cliente puede mover o tocar.
+   El punto llega en el WhatsApp como enlace de Google Maps. El mapa se crea una
+   sola vez y se reutiliza al redibujar el pedido. */
+const LEAFLET = "https://unpkg.com/leaflet@1.9.4/dist/";
+let leafletReady = null, map = null, pin = null;
+const locBox = el("div", { class:"loc" });
+const locMapEl = el("div", { class:"loc-map", id:"locMap", hidden:true, role:"application", "aria-label":"Mapa para marcar el punto de entrega" });
+const locMsgEl = el("p", { class:"loc-msg", id:"locMsg", "aria-live":"polite" });
+const locUrl = () => loc ? "https://maps.google.com/?q=" + loc.lat.toFixed(6) + "," + loc.lng.toFixed(6) : "";
+
+function locMsg(text, kind){ locMsgEl.textContent = text || ""; locMsgEl.className = "loc-msg " + (kind || ""); }
+function setLoc(lat, lng, acc){ loc = { lat, lng, acc: acc || 0 }; renderLocButtons(); }
+function clearLoc(){
+  loc = null; locMsg("");
+  if (pin){ pin.remove(); pin = null; }
+  locMapEl.hidden = true; renderLocButtons();
+}
+function loadLeaflet(){
+  if (leafletReady) return leafletReady;
+  leafletReady = new Promise((ok, fail) => {
+    const js = el("script", { src:LEAFLET + "leaflet.js" });
+    js.onload = ok; js.onerror = () => { leafletReady = null; js.remove(); fail(new Error("mapa")); };
+    document.head.append(el("link", { rel:"stylesheet", href:LEAFLET + "leaflet.css" }), js);
+  });
+  return leafletReady;
+}
+async function showMap(){
+  locMapEl.hidden = false; renderLocButtons();
+  try { await loadLeaflet(); }
+  catch (e){ locMapEl.hidden = true; renderLocButtons(); locMsg("No pudimos cargar el mapa. Escribe bien tu dirección o usa tu ubicación.", "bad"); return; }
+  const at = loc ? [loc.lat, loc.lng] : CONFIG.mapCenter;
+  if (!map){
+    map = L.map(locMapEl, { scrollWheelZoom:false }).setView(at, loc ? 17 : 14);
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom:19,
+      attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>' }).addTo(map);
+    map.on("click", e => { placePin(e.latlng.lat, e.latlng.lng); setLoc(e.latlng.lat, e.latlng.lng); locMsg("Punto de entrega marcado en el mapa.", "ok"); });
+  } else map.setView(at, loc ? 17 : map.getZoom());
+  setTimeout(() => map.invalidateSize(), 0);
+  if (loc) placePin(loc.lat, loc.lng);
+  else locMsg("Toca el mapa en el punto de entrega.");
+}
+function placePin(lat, lng){
+  if (!map) return;
+  if (pin){ pin.setLatLng([lat, lng]); return; }
+  pin = L.marker([lat, lng], { draggable:true, title:"Punto de entrega" }).addTo(map);
+  pin.on("dragend", () => { const q = pin.getLatLng(); setLoc(q.lat, q.lng); locMsg("Punto de entrega marcado en el mapa.", "ok"); });
+}
+function useMyLocation(){
+  if (!navigator.geolocation){ locMsg("Tu navegador no permite compartir la ubicación. Márcala en el mapa.", "bad"); return; }
+  locMsg("Buscando tu ubicación…");
+  navigator.geolocation.getCurrentPosition(pos => {
+    const c = pos.coords, acc = Math.round(c.accuracy || 0);
+    setLoc(c.latitude, c.longitude, acc);
+    locMsg(acc > 150 ? "Ubicación aproximada (±" + acc + " m). Revisa el pin en el mapa y muévelo si hace falta."
+                     : "Ubicación agregada. Si no es el punto de entrega, mueve el pin.", acc > 150 ? "" : "ok");
+    showMap();
+  }, err => {
+    locMsg(err.code === 1 ? "No diste permiso de ubicación. Puedes marcar el punto en el mapa."
+                          : "No pudimos obtener tu ubicación. Puedes marcar el punto en el mapa.", "bad");
+  }, { enableHighAccuracy:true, timeout:15000, maximumAge:60000 });
+}
+function renderLocButtons(){
+  const acts = el("div", { class:"loc-actions" },
+    el("button", { class:"btn", type:"button", onclick:useMyLocation }, "📍 Usar mi ubicación"),
+    locMapEl.hidden ? el("button", { class:"btn", type:"button", onclick:showMap }, "🗺️ Marcar en el mapa") : null,
+    loc ? el("button", { class:"btn", type:"button", onclick:clearLoc }, "Quitar ubicación") : null);
+  locBox.replaceChildren(
+    el("p", { class:"loc-msg", text:"Opcional: marca el punto exacto para que el domiciliario llegue más fácil." }),
+    acts, locMsgEl, locMapEl);
+  if (map && !locMapEl.hidden) setTimeout(() => map.invalidateSize(), 0);
+}
+function locBlock(){ renderLocButtons(); return locBox; }
+
 function payText(){
   const m = PAYMENTS.find(x => x.id === payment);
   if (!m) return "";
@@ -809,7 +898,7 @@ function renderCart(){
       el("div", { class:"done", role:"status" },
         el("strong", { text:"Abrimos WhatsApp con tu pedido." }),
         el("p", { text:"Envía el mensaje para confirmarlo. Tu pedido " + sentInfo + " queda registrado cuando lo recibamos y lo confirmemos." }),
-        el("button", { class:"btn btn-red", type:"button", onclick(){ sentInfo = null; Object.keys(cart).forEach(k => delete cart[k]); coupon = ""; payment = ""; cashWith = ""; CATEGORIES.forEach(c => c.products.forEach(refreshRow)); syncCart(); } }, "Empezar un pedido nuevo")));
+        el("button", { class:"btn btn-red", type:"button", onclick(){ sentInfo = null; Object.keys(cart).forEach(k => delete cart[k]); coupon = ""; payment = ""; cashWith = ""; clearLoc(); CATEGORIES.forEach(c => c.products.forEach(refreshRow)); syncCart(); } }, "Empezar un pedido nuevo")));
     return;
   }
 
@@ -863,6 +952,7 @@ function renderCart(){
     field("f-name", "Nombre", el("input", { id:"f-name", type:"text", autocomplete:"name", required:true, value:keep.name || "" })),
     field("f-phone", "Teléfono", el("input", { id:"f-phone", type:"tel", autocomplete:"tel", value:keep.phone || "" }), "(opcional)"),
     field("f-addr", "Dirección de entrega", el("input", { id:"f-addr", type:"text", autocomplete:"street-address", required:true, placeholder:"Calle, número, barrio o conjunto", value:keep.addr || "" })),
+    locBlock(),
     field("f-mail", "Correo electrónico", el("input", { id:"f-mail", type:"email", autocomplete:"email", required:true, value:keep.mail || "" })),
     field("f-note", "Indicaciones del pedido", el("textarea", { id:"f-note", maxlength:"300", placeholder:"Ej: sin cebolla, timbre dañado, llamar al llegar", text:keep.note || "" }), "(opcional)"),
     payBlock(),
@@ -911,6 +1001,7 @@ function sendOrder(){
     "*Cliente:* " + f.name,
     f.phone ? "*Teléfono:* " + f.phone : null,
     "*Dirección:* " + f.addr,
+    loc ? "📍 *Ubicación:* " + locUrl() : null,
     "*Correo:* " + f.mail, "",
     "*Pedido:*", ...lines, "",
     "*Cantidad total:* " + units + (units === 1 ? " producto" : " productos"),
@@ -931,7 +1022,7 @@ function sendOrder(){
       fetch(CONFIG.scriptUrl, { method:"POST", mode:"no-cors", keepalive:true,
         headers:{ "Content-Type":"text/plain;charset=utf-8" },
         body: JSON.stringify({ action:"order", id:o.id, fecha:o.fecha, cliente:f.name, telefono:f.phone,
-          direccion:f.addr, correo:f.mail, descripcion:description, cupon:couponNote, notas:"Pago: " + payText() + " · Pedido desde la página",
+          direccion:f.addr, correo:f.mail, descripcion:description, cupon:couponNote, notas:"Pago: " + payText() + (loc ? " · Ubicación: " + locUrl() : "") + " · Pedido desde la página",
           items:o.items.map(i => ({ sku:i.sku, cantidad:i.qty })) }) }).catch(() => {});
     } catch (e) { /* si falla el registro, el pedido igual sale por WhatsApp */ }
   }
