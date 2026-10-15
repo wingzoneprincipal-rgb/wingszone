@@ -43,5 +43,10 @@ GASEOSAS 1.5 L (una foto por marca)
 COCA-COLA 3 L
   coca-3000.jpg
 
+CERVEZAS EN LATA (una foto por marca)
+  cerv-aguila.jpg      Águila (nacional)
+  cerv-poker.jpg       Póker (nacional)
+  cerv-corona.jpg      Corona (importada)
+
 Si una marca no tiene foto propia, la página usa la foto general de la gaseosa
 (la de OlaClick). Si tampoco hay, muestra un ícono de llama.
