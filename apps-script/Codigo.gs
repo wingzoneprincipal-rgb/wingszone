@@ -6,6 +6,7 @@
  *
  *   GET  ?action=stock  -> unidades disponibles, estado, precio y visibilidad por SKU
  *                          (lo usa la página para mostrar "Agotado", "Quedan N", etc.)
+ *   GET  ?action=reviews -> reseñas marcadas "Sí" en la hoja Reseñas (la crea si no existe)
  *   POST action=order   -> registra el pedido como "Pendiente" en Pedidos y Detalle
  *                          (sus unidades quedan reservadas hasta que lo confirmes)
  *
@@ -15,11 +16,14 @@
 const HOJA_INVENTARIO = "Inventario";
 const HOJA_PEDIDOS = "Pedidos";
 const HOJA_DETALLE = "Detalle";
+const HOJA_RESENAS = "Reseñas";
+const MAX_RESENAS = 12;    // cuántas reseñas muestra la página como máximo
 const PRIMERA_FILA = 5;   // los datos empiezan en la fila 5 en todas las hojas
 
 function doGet(e) {
   const action = (e && e.parameter && e.parameter.action) || "";
   if (action === "stock") return json_(leerStock_());
+  if (action === "reviews") return json_(leerResenas_());
   return json_({ ok: true, mensaje: "Inventario Wings Zone conectado." });
 }
 
@@ -61,6 +65,45 @@ function leerStock_() {
     };
   });
   return { ok: true, items };
+}
+
+/* ---------- Reseñas ---------- */
+
+// Columnas: A Nombre · B Estrellas (1 a 5) · C Comentario · D Fecha · E Publicar (Sí/No)
+function leerResenas_() {
+  const sh = hojaResenas_();
+  const n = sh.getLastRow() - PRIMERA_FILA + 1;
+  if (n <= 0) return { ok: true, reviews: [] };
+  const reviews = sh.getRange(PRIMERA_FILA, 1, n, 5).getValues()
+    .filter(f => String(f[4]).trim().toLowerCase().replace("í", "i") === "si" && String(f[2]).trim())
+    .map(f => ({
+      nombre: String(f[0]).trim(),
+      estrellas: Math.min(5, Math.max(1, Math.round(Number(f[1]) || 5))),
+      comentario: String(f[2]).trim().slice(0, 400),
+      fecha: f[3] instanceof Date ? Utilities.formatDate(f[3], "America/Bogota", "yyyy-MM-dd") : String(f[3] || "")
+    }))
+    .sort((a, b) => (b.fecha > a.fecha ? 1 : b.fecha < a.fecha ? -1 : 0))
+    .slice(0, MAX_RESENAS);
+  return { ok: true, reviews };
+}
+
+// Si la hoja Reseñas no existe, la crea con sus títulos y la lista Sí/No.
+function hojaResenas_() {
+  const ss = SpreadsheetApp.getActive();
+  let sh = ss.getSheetByName(HOJA_RESENAS);
+  if (sh) return sh;
+  sh = ss.insertSheet(HOJA_RESENAS);
+  sh.getRange(1, 1).setValue("Reseñas de clientes").setFontWeight("bold").setFontSize(14);
+  sh.getRange(2, 1).setValue("Un renglón por opinión. Solo se muestran en la página las que tengan Sí en Publicar. Usa nombre e inicial del apellido (ej: Laura M.).");
+  sh.getRange(4, 1, 1, 5).setValues([["Nombre", "Estrellas (1 a 5)", "Comentario", "Fecha", "Publicar"]])
+    .setFontWeight("bold").setBackground("#1A1A1A").setFontColor("#FFFFFF");
+  const reglas = SpreadsheetApp.newDataValidation();
+  sh.getRange("B5:B500").setDataValidation(reglas.requireValueInList(["5", "4", "3", "2", "1"], true).build());
+  sh.getRange("E5:E500").setDataValidation(SpreadsheetApp.newDataValidation().requireValueInList(["Sí", "No"], true).build());
+  sh.getRange("D5:D500").setNumberFormat("yyyy-mm-dd");
+  sh.setColumnWidth(1, 160); sh.setColumnWidth(2, 120); sh.setColumnWidth(3, 480); sh.setColumnWidth(4, 110); sh.setColumnWidth(5, 90);
+  sh.setFrozenRows(4);
+  return sh;
 }
 
 /* ---------- Pedidos ---------- */
