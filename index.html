@@ -218,7 +218,8 @@ dialog#cart::backdrop{background:rgba(26,26,26,.6)}
   - whatsapp   Número con código de país, sin + ni espacios.
   - scriptUrl  Dirección del Apps Script (inventario en Google Sheets). Déjala vacía
                hasta tenerla: la página funciona sin inventario en vivo.
-  - instagram / facebook / tiktok / email  Si los dejas vacíos, no se muestran.
+  - instagram / facebook / tiktok  { url, name }. Con url vacía no se muestran.
+  - email  Si lo dejas vacío, no se muestra.
 -->
 
 <header class="top">
@@ -273,7 +274,7 @@ dialog#cart::backdrop{background:rgba(26,26,26,.6)}
 
 <section class="contact" id="contacto">
   <div class="wrap">
-    <h2>Escríbenos</h2>
+    <h2>Síguenos y escríbenos</h2>
     <div class="contact-grid">
       <div>
         <div class="contact-links" id="contactLinks"></div>
@@ -313,9 +314,10 @@ dialog#cart::backdrop{background:rgba(26,26,26,.6)}
 const CONFIG = {
   whatsapp: "573245508801",
   scriptUrl: "",          // URL del Apps Script publicado como aplicación web
-  instagram: "",          // Ej: "https://instagram.com/tu_usuario"
-  facebook: "",           // Ej: "https://facebook.com/tu_pagina"
-  tiktok: "",             // Ej: "https://tiktok.com/@tu_usuario"
+  // Redes sociales: url = enlace, name = cómo se muestra. Deja url vacía para ocultarla.
+  instagram: { url: "https://www.instagram.com/wing.zone/", name: "@wing.zone" },
+  facebook:  { url: "https://www.facebook.com/search/top?q=Wings%20Zone%20Anapoima", name: "@wings Zone" },
+  tiktok:    { url: "https://www.tiktok.com/@wingzone.a", name: "@wingzone.a" },
   email: "",              // Ej: "pedidos@tucorreo.com"
   showStockNumbers: true, // Muestra "Quedan N" cuando hay inventario conectado
   lowStockAt: 5           // Si el inventario no manda estado, "Pocas unidades" desde este número
@@ -907,11 +909,12 @@ function renderContact(){
   const box = $("contactLinks"); box.textContent = "";
   const add = (icon, label, href) => box.append(el("a", { href, target: href.startsWith("http") ? "_blank" : null, rel: href.startsWith("http") ? "noopener" : null },
     svg(ICONS[icon]), label));
-  add("wa", "WhatsApp: +" + CONFIG.whatsapp.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})$/, "$1 $2 $3 $4"),
+  const social = (icon, label, s) => { if (s && s.url) add(icon, label + (s.name ? " " + s.name : ""), s.url); };
+  social("tt", "TikTok", CONFIG.tiktok);
+  social("fb", "Facebook", CONFIG.facebook);
+  social("ig", "Instagram", CONFIG.instagram);
+  add("wa", "WhatsApp +" + CONFIG.whatsapp.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})$/, "$1 $2 $3 $4"),
       "https://wa.me/" + CONFIG.whatsapp + "?text=" + encodeURIComponent("Hola, vengo de la página de Wings Zone."));
-  if (CONFIG.instagram) add("ig", "Instagram", CONFIG.instagram);
-  if (CONFIG.facebook)  add("fb", "Facebook", CONFIG.facebook);
-  if (CONFIG.tiktok)    add("tt", "TikTok", CONFIG.tiktok);
   if (CONFIG.email)     add("mail", CONFIG.email, "mailto:" + CONFIG.email);
   $("heroWa").href = "https://wa.me/" + CONFIG.whatsapp + "?text=" + encodeURIComponent("Hola, vengo de la página de Wings Zone.");
   $("heroWa").target = "_blank"; $("heroWa").rel = "noopener";
