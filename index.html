@@ -128,6 +128,15 @@ a{color:inherit}
   .thumb{width:112px;height:112px}
   .buy{grid-column:auto;flex-direction:column;align-items:flex-end;margin:0;min-width:150px}
 }
+.item-body{min-width:0}
+.opts{display:flex;flex-wrap:wrap;gap:8px 14px;margin-top:8px}
+.opts .pick{flex:1 1 170px;flex-direction:column;align-items:stretch;gap:2px}
+.opts select{width:100%}
+.pick select.bad{border-color:var(--bad)}
+.opt-msg{flex:1 0 100%;margin:0;font-size:.9rem;font-weight:600;color:var(--bad)}
+.opt-msg:empty{display:none}
+.combo-add{display:flex;flex-direction:column;align-items:flex-end;gap:4px}
+.ci-opts{margin-top:4px;color:var(--muted);font-size:.92rem}
 .notice{background:var(--mist);border-left:4px solid var(--warn);padding:10px 14px;margin:16px 0 0;font-size:.95rem}
 
 /* ---------- Contacto ---------- */
@@ -319,8 +328,7 @@ const CONFIG = {
   tiktok: "",             // Ej: "https://tiktok.com/@tu_usuario"
   email: "",              // Ej: "pedidos@tucorreo.com"
   showStockNumbers: true, // Muestra "Quedan N" cuando hay inventario conectado
-  lowStockAt: 5,          // Si el inventario no manda estado, "Pocas unidades" desde este número
-  requireComboNote: true  // Pide salsa y acompañamiento en los combos
+  lowStockAt: 5           // Si el inventario no manda estado, "Pocas unidades" desde este número
 };
 
 /*  Contrato con el Apps Script (para cuando lo conectemos)
@@ -338,18 +346,30 @@ const COUPONS = {
   ENVIO60:   { min: 60000, text: "Cubre hasta $5.000 del domicilio." }
 };
 
+/* Opciones de los combos (salsas y acompañamientos incluidos en el precio).
+   En cada combo, "options" dice qué se elige y cuántas veces (count). */
+const SAUCES = ["BBQ clásica", "Miel mostaza kids", "Chipotle dulce", "Ají Brava Wing Zone"];
+const SIDES  = ["Papas Cronch", "Plátano chips"];
+const comboOptions = (sauces, sides) => [
+  { label: "Salsa", choices: SAUCES, count: sauces },
+  { label: "Acompañamiento", choices: SIDES, count: sides }
+];
+
 /* Precios tomados del menú de OlaClick (14/10/2026). Si el inventario está conectado,
    el precio de la hoja tiene prioridad. */
 const CATEGORIES = [
-  { id: "combos", name: "Combos de alitas", note: "Alitas a tu gusto con acompañamiento y salsa.", products: [
+  { id: "combos", name: "Combos de alitas", note: "Elige tu salsa y tus acompañamientos.", products: [
     { id: "c6",  name: "Combo x6 alitas",  combo: true, img: IMG + "d0e8a597-1181-4c56-a4bf-e086a15afd6c.jfif",
-      desc: "6 alitas a tu gusto. Incluye 1 acompañamiento a elegir y salsa.",
+      desc: "6 alitas a tu gusto. Incluye 1 salsa y 1 acompañamiento a elegir.",
+      options: comboOptions(1, 1),
       variants: [{ sku: "COMBO-6", label: "", price: 18900 }] },
     { id: "c12", name: "Combo x12 alitas", combo: true, img: IMG + "37fb862e-3605-43e0-8e6e-d9b3e1510063.jfif",
-      desc: "12 alitas a tu gusto. Incluye 2 acompañamientos a elegir y salsa.",
+      desc: "12 alitas a tu gusto. Incluye 1 salsa y 2 acompañamientos a elegir.",
+      options: comboOptions(1, 2),
       variants: [{ sku: "COMBO-12", label: "", price: 36900 }] },
     { id: "c18", name: "Combo x18 alitas", combo: true, img: IMG + "30392fb9-8318-4b51-b13b-933f2995f129.jfif",
-      desc: "18 alitas a tu gusto. Incluye 2 acompañamientos a elegir y salsa.",
+      desc: "18 alitas a tu gusto. Incluye 1 salsa y 2 acompañamientos a elegir.",
+      options: comboOptions(1, 2),
       variants: [{ sku: "COMBO-18", label: "", price: 53900 }] }
   ]},
   { id: "adicionales", name: "Adicionales", note: "Acompañamientos y salsas.", products: [
@@ -440,7 +460,8 @@ CATEGORIES.forEach(c => c.products.forEach(p => p.variants.forEach(v => { bySku[
 const productEls = {};
 const selected = {};      // id de producto -> índice de la variante elegida
 let stock = null;         // null = inventario no conectado o no disponible
-const cart = {};          // sku -> { qty, note }
+const cart = {};          // clave de línea -> { sku, qty, note, opts }  (opts = elecciones del combo)
+const optSel = {};        // id de combo -> elecciones actuales en la tarjeta del menú
 let coupon = "";
 let sentInfo = null;
 
@@ -463,8 +484,13 @@ function stateOf(sku){
   if (est === "Disponible") return "ok";
   return a <= CONFIG.lowStockAt ? "low" : "ok";
 }
-const qtyOf = sku => (cart[sku] ? cart[sku].qty : 0);
-const subtotal = () => Object.keys(cart).reduce((t, k) => t + cart[k].qty * priceOf(k), 0);
+const linesOf = sku => Object.keys(cart).filter(k => cart[k].sku === sku);
+const qtyOf = sku => linesOf(sku).reduce((t, k) => t + cart[k].qty, 0);
+const subtotal = () => Object.keys(cart).reduce((t, k) => t + cart[k].qty * priceOf(cart[k].sku), 0);
+const optsText = opts => {      // ["BBQ clásica", "Papas Cronch", "Plátano chips"] -> "BBQ clásica · Papas Cronch + Plátano chips"
+  if (!opts || !opts.length) return "";
+  return opts.map(g => g.join(" + ")).join(" · ");
+};
 const itemCount = () => Object.keys(cart).reduce((t, k) => t + cart[k].qty, 0);
 
 /* ============================================================
@@ -566,8 +592,31 @@ function buildRow(p){
     pick = el("label", { class:"pick" }, (p.pickLabel || "Opción") + ":", sel);
   }
 
+  let opts = null;
+  if (p.options){
+    const cur = optSel[p.id] = optSel[p.id] || p.options.map(g => Array(g.count).fill(""));
+    opts = el("div", { class:"opts" });
+    p.options.forEach((g, gi) => {
+      for (let k = 0; k < g.count; k++){
+        const label = g.label + (g.count > 1 ? " " + (k + 1) : "");
+        const sel = el("select", { id:"opt-" + p.id + "-" + gi + "-" + k, "aria-label":label + " para " + p.name,
+          onchange(e){ cur[gi][k] = e.target.value; e.target.classList.remove("bad"); $("optMsg-" + p.id).textContent = ""; } });
+        sel.append(el("option", { value:"", text:"Elige…" }));
+        g.choices.forEach(c => { const o = el("option", { value:c, text:c }); if (cur[gi][k] === c) o.selected = true; sel.append(o); });
+        opts.append(el("label", { class:"pick" }, label + ":", sel));
+      }
+    });
+    opts.append(el("p", { class:"opt-msg", id:"optMsg-" + p.id, role:"alert" }));
+  }
+
   let action;
-  if (q > 0){
+  if (p.options){
+    action = el("div", { class:"combo-add" },
+      el("button", { class:"add", type:"button", disabled: st === "out" || q >= a,
+        "aria-label":"Agregar " + p.name + " al pedido", onclick(){ addCombo(p, sku); } },
+        svg(ICONS.bag), st === "out" ? "Agotado" : "Agregar"),
+      q > 0 ? el("span", { class:"left", text:q + " en tu pedido" }) : null);
+  } else if (q > 0){
     action = el("div", { class:"stepper" },
       el("button", { type:"button", "aria-label":"Quitar uno de " + p.name, onclick(){ setQty(sku, q - 1); } }, "−"),
       el("output", { "aria-live":"polite", text:q }),
@@ -580,7 +629,7 @@ function buildRow(p){
 
   return el("article", { class:"line-item", id:"p-" + p.id },
     thumb,
-    el("div", { class:"item-body" }, el("h3", { text:p.name }), el("p", { text:p.desc }), meta, pick),
+    el("div", { class:"item-body" }, el("h3", { text:p.name }), el("p", { text:p.desc }), meta, pick, opts),
     el("div", { class:"buy" }, el("span", { class:"price", text:fmt(priceOf(sku)) }), action));
 }
 function refreshRow(p){
@@ -613,14 +662,34 @@ function spy(){
 /* ============================================================
    PEDIDO
    ============================================================ */
-function setQty(sku, n){
-  const max = availableOf(sku);
-  n = Math.max(0, Math.min(n, max === Infinity ? 99 : max));
-  if (n === 0) delete cart[sku];
-  else if (cart[sku]) cart[sku].qty = n;
-  else cart[sku] = { qty:n, note:"" };
+/* Cambia la cantidad de una línea del pedido. Sin "opts", la clave es el SKU. */
+function setQty(sku, n, opts){
+  const key = opts ? sku + "|" + optsText(opts) : sku;
+  const max = availableOf(sku), others = qtyOf(sku) - (cart[key] ? cart[key].qty : 0);
+  n = Math.max(0, Math.min(n, (max === Infinity ? 99 : max) - others));
+  if (n === 0) delete cart[key];
+  else if (cart[key]) cart[key].qty = n;
+  else cart[key] = { sku, qty:n, note:"", opts };
   refreshRow(bySku[sku].product);
   syncCart();
+}
+function addCombo(p, sku){
+  const cur = optSel[p.id];
+  const missing = [];
+  p.options.forEach((g, gi) => cur[gi].forEach((v, k) => { if (!v) missing.push("opt-" + p.id + "-" + gi + "-" + k); }));
+  if (missing.length){
+    missing.forEach(id => $(id).classList.add("bad"));
+    $("optMsg-" + p.id).textContent = "Elige la salsa y los acompañamientos antes de agregar.";
+    $(missing[0]).focus();
+    return;
+  }
+  const opts = cur.map(g => g.slice());
+  const key = sku + "|" + optsText(opts);
+  setQty(sku, (cart[key] ? cart[key].qty : 0) + 1, opts);
+  optSel[p.id] = p.options.map(g => Array(g.count).fill(""));
+  refreshRow(p);
+  const btn = document.querySelector("#p-" + p.id + " .add");
+  if (btn) btn.focus();
 }
 function syncCart(){
   const n = itemCount(), t = subtotal();
@@ -664,21 +733,23 @@ function renderCart(){
     return;
   }
 
-  keys.forEach(sku => {
-    const { product:p, variant:v } = bySku[sku], line = cart[sku], max = availableOf(sku);
+  keys.forEach((key, i) => {
+    const line = cart[key], sku = line.sku;
+    const { product:p, variant:v } = bySku[sku], max = availableOf(sku);
     const name = p.name + (v.label ? " · " + v.label : "");
-    const note = el("input", { class:"note", id:"n-" + sku, type:"text", maxlength:"140", value:line.note,
-      placeholder: p.combo ? "Salsa y acompañamiento (obligatorio). Ej: BBQ, papas" : "Nota (opcional)",
-      "aria-label":"Nota para " + name,
-      oninput(e){ line.note = e.target.value; e.target.classList.remove("bad"); } });
+    const choices = optsText(line.opts);
+    const note = el("input", { class:"note", id:"n-" + i, type:"text", maxlength:"140", value:line.note,
+      placeholder:"Nota (opcional)", "aria-label":"Nota para " + name,
+      oninput(e){ line.note = e.target.value; } });
     body.append(el("div", { class:"ci" },
       el("div", { class:"ci-top" }, el("span", { text:name }), el("span", { text:fmt(line.qty * priceOf(sku)) })),
+      choices ? el("div", { class:"ci-opts", text:choices }) : null,
       el("div", { class:"ci-sub" },
         el("span", { class:"unit", text:fmt(priceOf(sku)) + " c/u" }),
         el("div", { class:"stepper" },
-          el("button", { type:"button", "aria-label":"Quitar uno de " + name, onclick(){ setQty(sku, line.qty - 1); } }, "−"),
+          el("button", { type:"button", "aria-label":"Quitar uno de " + name, onclick(){ setQty(sku, line.qty - 1, line.opts); } }, "−"),
           el("output", { text:line.qty }),
-          el("button", { type:"button", "aria-label":"Agregar uno de " + name, disabled: line.qty >= max, onclick(){ setQty(sku, line.qty + 1); } }, "+"))),
+          el("button", { type:"button", "aria-label":"Agregar uno de " + name, disabled: qtyOf(sku) >= max, onclick(){ setQty(sku, line.qty + 1, line.opts); } }, "+"))),
       note));
   });
 
@@ -716,9 +787,11 @@ function buildOrder(){
   const d = new Date();
   const p2 = n => String(n).padStart(2, "0");
   const id = "P-" + String(d.getFullYear()).slice(2) + p2(d.getMonth()+1) + p2(d.getDate()) + "-" + p2(d.getHours()) + p2(d.getMinutes()) + p2(d.getSeconds());
-  const items = Object.keys(cart).map(sku => {
-    const { product:p, variant:v } = bySku[sku], l = cart[sku];
-    return { sku, qty:l.qty, name: p.name + (v.label ? " " + v.label : ""), unit:priceOf(sku), note:l.note.trim() };
+  const items = Object.keys(cart).map(key => {
+    const l = cart[key], sku = l.sku, { product:p, variant:v } = bySku[sku];
+    const choices = optsText(l.opts);
+    return { sku, qty:l.qty, name: p.name + (v.label ? " " + v.label : "") + (choices ? " [" + choices + "]" : ""),
+             unit:priceOf(sku), note:l.note.trim() };
   });
   return { id, fecha:d.toISOString(), items };
 }
@@ -731,11 +804,8 @@ function sendOrder(){
   flag("f-name", !f.name);
   flag("f-addr", !f.addr);
   flag("f-mail", !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(f.mail));
-  if (CONFIG.requireComboNote){
-    Object.keys(cart).forEach(sku => { if (bySku[sku].product.combo) flag("n-" + sku, !cart[sku].note.trim()); });
-  }
   if (bad){
-    msg.textContent = "Faltan datos. Revisa los campos marcados en rojo (en los combos, indica la salsa y el acompañamiento).";
+    msg.textContent = "Faltan datos. Revisa los campos marcados en rojo.";
     $(firstBad).focus(); return;
   }
   const cs = couponState();
@@ -791,10 +861,13 @@ async function loadStock(){
     if (!data || !data.ok || !data.items) throw new Error("respuesta inválida");
     stock = data.items;
     let trimmed = false;
-    Object.keys(cart).forEach(sku => {
-      const m = availableOf(sku);
-      if (!isVisible(sku) || m === 0){ delete cart[sku]; trimmed = true; }
-      else if (cart[sku].qty > m){ cart[sku].qty = m; trimmed = true; }
+    const left = {};    // unidades que aún caben por SKU, repartidas entre sus líneas
+    Object.keys(cart).forEach(key => {
+      const sku = cart[key].sku;
+      if (!(sku in left)) left[sku] = isVisible(sku) ? availableOf(sku) : 0;
+      const n = Math.min(cart[key].qty, left[sku]);
+      if (n !== cart[key].qty) trimmed = true;
+      if (n === 0) delete cart[key]; else { cart[key].qty = n; left[sku] -= n; }
     });
     if (trimmed){ note.hidden = false; note.textContent = "Ajustamos tu pedido a las unidades disponibles."; }
     CATEGORIES.forEach(c => c.products.forEach(refreshRow));
