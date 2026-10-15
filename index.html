@@ -188,6 +188,17 @@ dialog#cart::backdrop{background:rgba(26,26,26,.6)}
 .field input:focus,.field textarea:focus{border-color:var(--ink);outline:none}
 .field .bad{border-color:var(--bad)}
 .field textarea{min-height:76px;resize:vertical}
+fieldset.pay{border:0;margin:14px 0 0;padding:0;min-width:0}
+fieldset.pay legend{font-weight:700;padding:0;margin-bottom:6px}
+.pay-opts{display:grid;gap:6px}
+.pay-opt{display:flex;align-items:center;gap:10px;border:2px solid var(--line);border-radius:8px;padding:10px 12px;cursor:pointer;font-weight:600}
+.pay-opt:hover{border-color:var(--ink)}
+.pay-opt:has(input:checked){border-color:var(--ink);background:var(--mist)}
+.pay-opt input{width:18px;height:18px;accent-color:var(--red);margin:0;flex:none}
+.pay-opt small{display:block;font-weight:400;color:var(--muted)}
+fieldset.pay.bad .pay-opt{border-color:var(--bad)}
+.pay-note{margin:8px 0 0;font-size:.92rem;color:var(--muted)}
+.pay-note:empty{display:none}
 .coupon{display:flex;gap:8px}
 .coupon input{flex:1;text-transform:uppercase}
 .coupon .btn{padding:10px 16px}
@@ -333,6 +344,21 @@ const CONFIG = {
 */
 
 const IMG = "https://assets.olaclick.app/companies/products/images/800/";
+/* ============================================================
+   MEDIOS DE PAGO
+   ============================================================
+   El cliente elige uno al hacer el pedido. Los datos para pagar (número de Nequi,
+   llave Bre-B o link de Mercado Pago) se los envías por WhatsApp al confirmar.
+   - cash  true = pregunta con cuánto paga, para llevar el cambio.
+*/
+const PAYMENTS = [
+  { id: "nequi",     label: "Nequi" },
+  { id: "daviplata", label: "Daviplata" },
+  { id: "breb",      label: "Bre-B", hint: "Transferencia inmediata con llave" },
+  { id: "efectivo",  label: "Efectivo", hint: "Pagas al recibir", cash: true },
+  { id: "link",      label: "Link de pago Mercado Pago", hint: "Tarjeta débito o crédito, PSE" }
+];
+
 /* ============================================================
    CUPONES
    ============================================================
@@ -494,6 +520,8 @@ let stock = null;         // null = inventario no conectado o no disponible
 const cart = {};          // clave de línea -> { sku, qty, note, opts }  (opts = elecciones del combo)
 const optSel = {};        // id de combo -> elecciones actuales en la tarjeta del menú
 let coupon = "";
+let payment = "";         // id del medio de pago elegido
+let cashWith = "";        // con cuánto paga (solo efectivo)
 let sentInfo = null;
 
 function priceOf(sku){
@@ -739,6 +767,35 @@ function couponState(){
   return { ok:true, msg:c.applied, coupon:c };
 }
 
+function payText(){
+  const m = PAYMENTS.find(x => x.id === payment);
+  if (!m) return "";
+  const n = Number(String(cashWith).replace(/\D/g, ""));
+  return m.label + (m.cash && n > 0 ? " (pago con " + fmt(n) + ")" : "");
+}
+function payBlock(){
+  const box = el("fieldset", { class:"pay", id:"payBox" }, el("legend", { text:"¿Cómo vas a pagar?" }));
+  const opts = el("div", { class:"pay-opts" });
+  PAYMENTS.forEach(m => {
+    opts.append(el("label", { class:"pay-opt" },
+      el("input", { type:"radio", name:"pay", id:"pay-" + m.id, value:m.id, checked: payment === m.id,
+        onchange(){ payment = m.id; renderCart(); const r = $("pay-" + m.id); if (r) r.focus(); } }),
+      el("span", {}, m.label, m.hint ? el("small", { text:m.hint }) : null)));
+  });
+  box.append(opts);
+  const sel = PAYMENTS.find(x => x.id === payment);
+  if (sel && sel.cash){
+    box.append(el("div", { class:"field" },
+      el("label", { for:"f-cash" }, "¿Con cuánto pagas? ", el("span", { class:"hint", text:"(opcional, para llevarte el cambio)" })),
+      el("input", { id:"f-cash", type:"text", inputmode:"numeric", maxlength:"12", placeholder:"Ej: 50.000", value:cashWith,
+        oninput(e){ cashWith = e.target.value; } })));
+  }
+  box.append(el("p", { class:"pay-note", text: sel && !sel.cash
+    ? "Te enviamos los datos para pagar por WhatsApp cuando confirmemos tu pedido y el valor del domicilio."
+    : sel ? "Pagas al recibir tu pedido." : "" }));
+  return box;
+}
+
 function renderCart(){
   const body = $("cartBody");
   const keep = { // conserva lo escrito en el formulario al redibujar
@@ -752,7 +809,7 @@ function renderCart(){
       el("div", { class:"done", role:"status" },
         el("strong", { text:"Abrimos WhatsApp con tu pedido." }),
         el("p", { text:"Envía el mensaje para confirmarlo. Tu pedido " + sentInfo + " queda registrado cuando lo recibamos y lo confirmemos." }),
-        el("button", { class:"btn btn-red", type:"button", onclick(){ sentInfo = null; Object.keys(cart).forEach(k => delete cart[k]); coupon = ""; CATEGORIES.forEach(c => c.products.forEach(refreshRow)); syncCart(); } }, "Empezar un pedido nuevo")));
+        el("button", { class:"btn btn-red", type:"button", onclick(){ sentInfo = null; Object.keys(cart).forEach(k => delete cart[k]); coupon = ""; payment = ""; cashWith = ""; CATEGORIES.forEach(c => c.products.forEach(refreshRow)); syncCart(); } }, "Empezar un pedido nuevo")));
     return;
   }
 
@@ -808,6 +865,7 @@ function renderCart(){
     field("f-addr", "Dirección de entrega", el("input", { id:"f-addr", type:"text", autocomplete:"street-address", required:true, placeholder:"Calle, número, barrio o conjunto", value:keep.addr || "" })),
     field("f-mail", "Correo electrónico", el("input", { id:"f-mail", type:"email", autocomplete:"email", required:true, value:keep.mail || "" })),
     field("f-note", "Indicaciones del pedido", el("textarea", { id:"f-note", maxlength:"300", placeholder:"Ej: sin cebolla, timbre dañado, llamar al llegar", text:keep.note || "" }), "(opcional)"),
+    payBlock(),
     el("p", { class:"form-msg", id:"formMsg", role:"alert" }),
     el("button", { class:"btn btn-red send", type:"button", onclick:sendOrder },
       svg(ICONS.wa), "Enviar pedido por WhatsApp"));
@@ -835,6 +893,9 @@ function sendOrder(){
   flag("f-name", !f.name);
   flag("f-addr", !f.addr);
   flag("f-mail", !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(f.mail));
+  const payBad = !PAYMENTS.some(x => x.id === payment);
+  $("payBox").classList.toggle("bad", payBad);
+  if (payBad){ bad = true; firstBad = firstBad || "pay-" + PAYMENTS[0].id; }
   if (bad){
     msg.textContent = "Faltan datos. Revisa los campos marcados en rojo.";
     $(firstBad).focus(); return;
@@ -856,6 +917,7 @@ function sendOrder(){
     "*Subtotal:* " + fmt(t),
     (cs && cs.ok) ? "*Cupón:* " + coupon + (cs.coupon.newOnly ? " (es mi primera compra)" : "") : null,
     "*Domicilio:* se confirma según mi zona",
+    "*Pago:* " + payText(),
     "*Total productos:* " + fmt(t),
     f.note ? "" : null,
     f.note ? "*Indicaciones:* " + f.note : null
@@ -869,7 +931,7 @@ function sendOrder(){
       fetch(CONFIG.scriptUrl, { method:"POST", mode:"no-cors", keepalive:true,
         headers:{ "Content-Type":"text/plain;charset=utf-8" },
         body: JSON.stringify({ action:"order", id:o.id, fecha:o.fecha, cliente:f.name, telefono:f.phone,
-          direccion:f.addr, correo:f.mail, descripcion:description, cupon:couponNote, notas:"Pedido desde la página",
+          direccion:f.addr, correo:f.mail, descripcion:description, cupon:couponNote, notas:"Pago: " + payText() + " · Pedido desde la página",
           items:o.items.map(i => ({ sku:i.sku, cantidad:i.qty })) }) }).catch(() => {});
     } catch (e) { /* si falla el registro, el pedido igual sale por WhatsApp */ }
   }
