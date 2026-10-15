@@ -79,6 +79,7 @@ a{color:inherit}
 .promos .wrap{display:grid;gap:0;padding:0}
 .promo{display:flex;flex-wrap:wrap;align-items:center;gap:6px 16px;padding:18px 0}
 .promo + .promo{border-top:2px solid rgba(26,26,26,.2)}
+.promo .tag{flex:1 0 100%;width:fit-content;max-width:max-content;background:var(--red);color:#fff;font-weight:700;font-size:.85rem;text-transform:uppercase;letter-spacing:.05em;padding:3px 10px;border-radius:999px}
 .promo h2{font-family:var(--display);font-weight:400;font-size:1.6rem;margin:0;line-height:1.1;flex:1 1 220px}
 .promo p{margin:0;flex:2 1 260px}
 .code{display:inline-flex;align-items:center;gap:8px;background:var(--ink);color:#fff;border:0;border-radius:8px;padding:9px 14px;font-weight:700;letter-spacing:.06em;cursor:pointer}
@@ -247,19 +248,8 @@ dialog#cart::backdrop{background:rgba(26,26,26,.6)}
     </div>
   </section>
 
-  <section class="promos" aria-label="Cupones">
-    <div class="wrap">
-      <div class="promo">
-        <h2>Primera compra</h2>
-        <p>Te cubrimos hasta $5.000 del domicilio en pedidos desde $18.900.</p>
-        <button class="code" type="button" data-copy="PRIMERAWZ" aria-label="Copiar código PRIMERAWZ"><span>PRIMERAWZ</span></button>
-      </div>
-      <div class="promo">
-        <h2>Pedidos desde $60.000</h2>
-        <p>Te cubrimos hasta $5.000 del domicilio.</p>
-        <button class="code" type="button" data-copy="ENVIO60" aria-label="Copiar código ENVIO60"><span>ENVIO60</span></button>
-      </div>
-    </div>
+  <section class="promos" id="promos" aria-label="Cupones">
+    <div class="wrap" id="promoList"></div>
   </section>
 
   <nav class="tabs" aria-label="Categorías del menú"><div class="wrap" id="tabs"></div></nav>
@@ -333,10 +323,41 @@ const CONFIG = {
 */
 
 const IMG = "https://assets.olaclick.app/companies/products/images/800/";
-const COUPONS = {
-  PRIMERAWZ: { min: 18900, text: "Primera compra: cubre hasta $5.000 del domicilio (solo clientes nuevos)." },
-  ENVIO60:   { min: 60000, text: "Cubre hasta $5.000 del domicilio." }
-};
+/* ============================================================
+   CUPONES
+   ============================================================
+   Se manejan solo desde aquí (no dependen de OlaClick ni de otra plataforma).
+   - code     Código que escribe el cliente (en MAYÚSCULAS, sin espacios).
+   - active   true = se muestra y se puede usar. false = apagado.
+   - tag      Etiqueta roja sobre el título (opcional).
+   - title    Título grande del cupón en la franja amarilla.
+   - text     Texto que acompaña el título.
+   - min      Valor mínimo del pedido (en pesos) para que aplique.
+   - applied  Mensaje que ve el cliente cuando el cupón queda aplicado.
+   - newOnly  true = solo primera compra (se verifica al confirmar por WhatsApp).
+   - until    Último día de vigencia "AAAA-MM-DD" (opcional; vacío = sin vencimiento).
+*/
+const COUPONS = [
+  { code: "PRIMERAWZ", active: true, newOnly: true, min: 18900, until: "",
+    tag: "🔥 Solo tu primera compra",
+    title: "¡Tu primer domicilio va por nuestra cuenta!",
+    text: "¿Primera vez en Wings Zone? Pide desde $18.900 y te llevamos tus alitas GRATIS a la puerta. ¡Cupos limitados!",
+    applied: "¡Listo! 🔥 Tu primer domicilio es GRATIS. Lo confirmamos por WhatsApp." },
+  { code: "ENVIO60", active: true, newOnly: false, min: 60000, until: "",
+    tag: "",
+    title: "Pedidos desde $60.000",
+    text: "Te cubrimos hasta $5.000 del domicilio.",
+    applied: "Cupón aplicado: te cubrimos hasta $5.000 del domicilio." }
+];
+function todayBogota(){
+  return new Intl.DateTimeFormat("en-CA", { timeZone:"America/Bogota" }).format(new Date());
+}
+function findCoupon(code){
+  const c = COUPONS.find(x => x.code === code);
+  if (!c || !c.active) return null;
+  if (c.until && todayBogota() > c.until) return null;
+  return c;
+}
 
 /* Precios tomados del menú de OlaClick (14/10/2026). Si el inventario está conectado,
    el precio de la hoja tiene prioridad. */
@@ -632,11 +653,11 @@ function syncCart(){
 }
 function couponState(){
   if (!coupon) return null;
-  const c = COUPONS[coupon];
-  if (!c) return { ok:false, msg:"Ese código no existe. Revisa que esté bien escrito." };
+  const c = findCoupon(coupon);
+  if (!c) return { ok:false, msg:"Ese código no existe o ya no está vigente. Revisa que esté bien escrito." };
   const t = subtotal();
   if (t < c.min) return { ok:false, msg:"Este código necesita un pedido de al menos " + fmt(c.min) + ". Te faltan " + fmt(c.min - t) + "." };
-  return { ok:true, msg:c.text };
+  return { ok:true, msg:c.applied, coupon:c };
 }
 
 function renderCart(){
@@ -753,7 +774,7 @@ function sendOrder(){
     "*Pedido:*", ...lines, "",
     "*Cantidad total:* " + units + (units === 1 ? " producto" : " productos"),
     "*Subtotal:* " + fmt(t),
-    (cs && cs.ok) ? "*Cupón:* " + coupon + " (" + COUPONS[coupon].text + ")" : null,
+    (cs && cs.ok) ? "*Cupón:* " + coupon + (cs.coupon.newOnly ? " (es mi primera compra)" : "") : null,
     "*Domicilio:* se confirma según mi zona",
     "*Total productos:* " + fmt(t),
     f.note ? "" : null,
@@ -826,12 +847,22 @@ function renderContact(){
 /* ============================================================
    ARRANQUE
    ============================================================ */
-document.querySelectorAll("[data-copy]").forEach(b => b.addEventListener("click", async () => {
-  const code = b.dataset.copy, span = b.querySelector("span");
-  try { await navigator.clipboard.writeText(code); span.textContent = "Copiado"; }
-  catch (e) { span.textContent = code + " (cópialo)"; }
-  setTimeout(() => { span.textContent = code; }, 1800);
-}));
+function renderPromos(){
+  const list = $("promoList"); list.textContent = "";
+  const shown = COUPONS.filter(c => findCoupon(c.code));
+  $("promos").hidden = !shown.length;
+  shown.forEach(c => {
+    const span = el("span", { text:c.code });
+    const btn = el("button", { class:"code", type:"button", "aria-label":"Copiar código " + c.code, async onclick(){
+      try { await navigator.clipboard.writeText(c.code); span.textContent = "Copiado"; }
+      catch (e) { span.textContent = c.code + " (cópialo)"; }
+      setTimeout(() => { span.textContent = c.code; }, 1800);
+    } }, svg(ICONS.copy), span);
+    list.append(el("div", { class:"promo" },
+      c.tag ? el("span", { class:"tag", text:c.tag }) : null,
+      el("h2", { text:c.title }), el("p", { text:c.text }), btn));
+  });
+}
 function openCart(){ renderCart(); $("cart").showModal(); }
 $("openCart").addEventListener("click", openCart);
 $("openCartBar").addEventListener("click", openCart);
@@ -848,7 +879,7 @@ document.querySelectorAll("img[data-try]").forEach(img => {
   if (img.complete && img.naturalWidth === 0) next();
 });
 
-renderCatalog(); renderContact(); renderHours(); renderStatus(); syncCart();
+renderPromos(); renderCatalog(); renderContact(); renderHours(); renderStatus(); syncCart();
 setInterval(renderStatus, 60000);
 loadStock();
 </script>
