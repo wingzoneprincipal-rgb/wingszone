@@ -58,6 +58,21 @@ SI CAMBIAS EL CÓDIGO
   Implementar > Gestionar implementaciones > lápiz > Versión: Nueva versión > Implementar.
   Así la URL sigue siendo la misma.
 
+RESEÑAS DE CLIENTES
+-------------------
+  La hoja "Reseñas" guarda las opiniones que se muestran en la página
+  ("Lo que dicen nuestros clientes").
+  1. Actualiza el código: Extensiones > Apps Script, borra todo, pega el Codigo.gs
+     nuevo y guarda. Luego Implementar > Gestionar implementaciones > lápiz >
+     Versión: Nueva versión > Implementar. (La URL /exec no cambia.)
+  2. Prueba abriendo tu URL /exec con  ?action=reviews  al final. La primera vez
+     crea sola la hoja "Reseñas" (con sus títulos) y responde {"ok":true,"reviews":[]}.
+  3. En la hoja Reseñas escribe una opinión por renglón desde la fila 5:
+     Nombre · Estrellas (1 a 5) · Comentario · Fecha · Publicar (Sí/No).
+  4. Solo aparecen las que tengan Sí (máximo las 12 más recientes). La página muestra
+     el nombre y la inicial del apellido. Si no hay ninguna con Sí, la sección no aparece.
+  Usa solo opiniones reales y pídele permiso al cliente para publicarla.
+
 AGREGAR UN PRODUCTO NUEVO
 -------------------------
   Agrégalo en la página (index.html) y añade su fila en la hoja Inventario con el

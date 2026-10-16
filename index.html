@@ -140,6 +140,18 @@ a{color:inherit}
 .ci-opts{margin-top:4px;color:var(--muted);font-size:.92rem}
 .notice{background:var(--mist);border-left:4px solid var(--warn);padding:10px 14px;margin:16px 0 0;font-size:.95rem}
 
+/* ---------- Reseñas ---------- */
+.reviews{background:var(--mist);padding:52px 0}
+.reviews h2{font-family:var(--display);font-weight:400;font-size:2.4rem;line-height:1;margin:0 0 6px;text-transform:uppercase}
+.rev-sum{margin:0 0 22px;color:var(--muted);font-weight:600}
+.rev-sum .stars{color:var(--red);margin-right:6px}
+.rev-list{display:grid;gap:14px;grid-template-columns:repeat(auto-fill,minmax(260px,1fr))}
+.rev{background:var(--paper);border-radius:12px;padding:18px 18px 16px;border:1px solid var(--line);display:flex;flex-direction:column;gap:10px;margin:0}
+.rev .stars{color:var(--red);font-size:1.1rem;letter-spacing:2px}
+.rev blockquote{margin:0;font-size:1.02rem}
+.rev figcaption{margin-top:auto;font-weight:700}
+.rev figcaption span{font-weight:400;color:var(--muted);margin-left:6px}
+
 /* ---------- Contacto ---------- */
 .contact{background:var(--ink);color:#fff;padding:56px 0 40px}
 .contact h2{font-family:var(--display);font-weight:400;font-size:2.4rem;line-height:1;margin:0 0 24px;text-transform:uppercase}
@@ -292,6 +304,14 @@ fieldset.pay.bad .pay-opt{border-color:var(--bad)}
     </div>
   </section>
 </main>
+
+<section class="reviews" id="resenas" aria-labelledby="revTitle" hidden>
+  <div class="wrap">
+    <h2 id="revTitle">Lo que dicen nuestros clientes</h2>
+    <p class="rev-sum" id="revSum"></p>
+    <div class="rev-list" id="revList"></div>
+  </div>
+</section>
 
 <section class="contact" id="contacto">
   <div class="wrap">
@@ -1068,6 +1088,45 @@ async function loadStock(){
 /* ============================================================
    CONTACTO
    ============================================================ */
+/* ============================================================
+   RESEÑAS (hoja "Reseñas" de Google Sheets, solo las marcadas "Sí")
+   ============================================================ */
+const starText = n => "★★★★★".slice(0, n) + "☆☆☆☆☆".slice(0, 5 - n);
+function shortName(name){   // "Laura Martínez" -> "Laura M." (nunca el apellido completo)
+  const w = String(name || "").trim().split(/\s+/).filter(Boolean);
+  if (!w.length) return "Cliente";
+  return w.length > 1 ? w[0] + " " + w[1].charAt(0).toUpperCase() + "." : w[0];
+}
+function revDate(iso){
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso || "");
+  if (!m) return "";
+  return new Date(+m[1], +m[2] - 1, +m[3]).toLocaleDateString("es-CO", { month:"long", year:"numeric" });
+}
+async function loadReviews(){
+  if (!CONFIG.scriptUrl) return;
+  try {
+    const ctl = new AbortController(); const timer = setTimeout(() => ctl.abort(), 8000);
+    const res = await fetch(CONFIG.scriptUrl + (CONFIG.scriptUrl.includes("?") ? "&" : "?") + "action=reviews", { signal:ctl.signal });
+    clearTimeout(timer);
+    const data = await res.json();
+    const list = (data && data.ok && Array.isArray(data.reviews)) ? data.reviews.filter(r => r && r.comentario) : [];
+    if (!list.length) return;
+    const box = $("revList"); box.textContent = "";
+    list.forEach(r => {
+      const n = Math.min(5, Math.max(1, Math.round(Number(r.estrellas) || 5)));
+      const when = revDate(r.fecha);
+      box.append(el("figure", { class:"rev" },
+        el("div", { class:"stars", role:"img", "aria-label":n + " de 5 estrellas", text:starText(n) }),
+        el("blockquote", { text:"“" + r.comentario + "”" }),
+        el("figcaption", {}, shortName(r.nombre), when ? el("span", { text:when }) : null)));
+    });
+    const avg = list.reduce((t, r) => t + Math.min(5, Math.max(1, Math.round(Number(r.estrellas) || 5))), 0) / list.length;
+    $("revSum").replaceChildren(el("span", { class:"stars", "aria-hidden":"true", text:starText(Math.round(avg)) }),
+      avg.toFixed(1).replace(".", ",") + " de 5 · " + list.length + (list.length === 1 ? " opinión" : " opiniones"));
+    $("resenas").hidden = false;
+  } catch (e) { /* sin reseñas: la sección sigue oculta */ }
+}
+
 function renderContact(){
   const box = $("contactLinks"); box.textContent = "";
   const add = (icon, label, href) => box.append(el("a", { href, target: href.startsWith("http") ? "_blank" : null, rel: href.startsWith("http") ? "noopener" : null },
@@ -1121,6 +1180,7 @@ document.querySelectorAll("img[data-try]").forEach(img => {
 renderPromos(); renderCatalog(); renderContact(); renderHours(); renderStatus(); syncCart();
 setInterval(renderStatus, 60000);
 loadStock();
+loadReviews();
 </script>
 </body>
 </html>
