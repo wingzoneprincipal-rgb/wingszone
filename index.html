@@ -10,6 +10,18 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Anton&family=Barlow:wght@400;500;600;700&display=swap" rel="stylesheet">
+<!-- Píxel de Meta (Wings Zone). Eventos: PageView, AddToCart y Purchase (= pedido enviado por WhatsApp). -->
+<script>
+!function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;
+n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;
+t.src=v;s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}(window,
+document,'script','https://connect.facebook.net/en_US/fbevents.js');
+fbq('init', '1583495729663332');
+fbq('track', 'PageView');
+function track(ev, data){ try { if (window.fbq) fbq('track', ev, data || {}); } catch (e) {} }
+</script>
+<noscript><img height="1" width="1" style="display:none" alt="" src="https://www.facebook.com/tr?id=1583495729663332&ev=PageView&noscript=1"></noscript>
 <style>
 :root{
   --ink:#1A1A1A;
@@ -758,6 +770,8 @@ function setQty(sku, n, opts){
   const key = opts ? sku + "|" + optsText(opts) : sku;
   const max = availableOf(sku), others = qtyOf(sku) - (cart[key] ? cart[key].qty : 0);
   n = Math.max(0, Math.min(n, (max === Infinity ? 99 : max) - others));
+  const prev = cart[key] ? cart[key].qty : 0;
+  if (n > prev) track("AddToCart", { content_ids:[sku], content_type:"product", value:priceOf(sku) * (n - prev), currency:"COP" });
   if (n === 0) delete cart[key];
   else if (cart[key]) cart[key].qty = n;
   else cart[key] = { sku, qty:n, note:"", opts };
@@ -1046,6 +1060,8 @@ function sendOrder(){
           items:o.items.map(i => ({ sku:i.sku, cantidad:i.qty })) }) }).catch(() => {});
     } catch (e) { /* si falla el registro, el pedido igual sale por WhatsApp */ }
   }
+  track("Purchase", { value:t, currency:"COP", num_items:units, content_type:"product",
+    content_ids:o.items.map(i => i.sku), order_id:o.id });
   const url = "https://wa.me/" + CONFIG.whatsapp + "?text=" + encodeURIComponent(text);
   const w = window.open(url, "_blank", "noopener");
   if (!w) location.href = url;
