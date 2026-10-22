@@ -73,6 +73,23 @@ COLUMNAS CALCULADAS (SIN FÓRMULAS)
   3. Publica una nueva versión: Implementar > Gestionar implementaciones > lápiz >
      Versión: Nueva versión > Implementar.
 
+INFORME DE VENTAS
+-----------------
+  Después de pegar el código, recarga la hoja: aparece el menú "Wing Zone".
+  - Wing Zone > Actualizar informe: crea/actualiza la hoja "Informe".
+  - En la hoja Informe eliges el periodo en B2 (Hoy, Ayer, Últimos 7 días, Esta semana,
+    Últimos 30 días, Este mes, Mes anterior, Este año o Personalizado con Desde/Hasta en B3:B4);
+    al cambiarlo, el informe se actualiza solo.
+  - Incluye: resumen con comparación frente al periodo anterior, ventas por día o mes, productos
+    más vendidos, categorías, salsas y acompañamientos, productos sin ventas, día de la semana,
+    hora, medios de pago, cupones, clientes y mejores clientes, con gráficos.
+  - Solo cuenta como venta lo que está en Confirmado. La fecha del pedido (columna B de Pedidos)
+    debe ser una fecha válida.
+  - Correo: Wing Zone > Enviar informe por correo ahora, o activar el informe semanal (lunes
+    7 a. m., semana anterior) y/o mensual (día 1, 7 a. m., mes anterior). Llegan a
+    wingzoneprincipal@gmail.com (se cambia en CORREO_INFORMES, al inicio del código).
+    La primera vez Google pide permiso para enviar correos y programar tareas.
+
 RESEÑAS DE CLIENTES
 -------------------
   La hoja "Reseñas" guarda las opiniones que se muestran en la página
