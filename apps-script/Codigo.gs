@@ -161,14 +161,37 @@ function registrarPedido_(d) {
 // Se escriben desde aquí para no depender de que la hoja las tenga: si alguien borra una fila
 // completa (por ejemplo el pedido de ejemplo), los pedidos nuevos siguen calculando solos.
 
+// Separador de argumentos según la configuración regional de la hoja: con "Español (Colombia)"
+// Google Sheets puede esperar punto y coma (;) en vez de coma (,). En lugar de suponerlo, se prueba
+// una vez con una hoja temporal y se guarda el resultado en las propiedades del script.
+function separador_(forzar) {
+  const props = PropertiesService.getScriptProperties();
+  let sep = forzar ? null : props.getProperty("SEP_FORMULAS");
+  if (sep) return sep;
+  const ss = SpreadsheetApp.getActive();
+  const tmp = ss.insertSheet("tmp_formulas_" + Date.now());
+  try {
+    const c = tmp.getRange(1, 1);
+    c.setFormula("=IF(TRUE,7,1)");
+    SpreadsheetApp.flush();
+    sep = String(c.getValue()) === "7" ? "," : ";";
+  } finally {
+    ss.deleteSheet(tmp);
+  }
+  props.setProperty("SEP_FORMULAS", sep);
+  return sep;
+}
+// Ninguna fórmula de este archivo lleva comas dentro de textos, así que reemplazarlas es seguro.
+const F_ = f => (separador_() === "," ? f : f.replace(/,/g, ";"));
+
 const R_ = (hoja, col) => hoja + "!$" + col + "$" + PRIMERA_FILA + ":$" + col + "$" + ULTIMA_FILA;
-const fPedidoCant_     = r => '=IF(A' + r + '="","",SUMIFS(' + R_("Detalle", "D") + "," + R_("Detalle", "A") + ",A" + r + "))";
-const fPedidoSubtotal_ = r => '=IF(A' + r + '="","",SUMIFS(' + R_("Detalle", "F") + "," + R_("Detalle", "A") + ",A" + r + "))";
-const fPedidoTotal_    = r => '=IF(A' + r + '="","",I' + r + "+N(J" + r + "))";
-const fDetalleProducto_ = r => '=IF(B' + r + '="","",IFERROR(INDEX(' + R_("Inventario", "B") + ",MATCH(B" + r + "," + R_("Inventario", "A") + ',0)),"SKU no existe"))';
-const fDetallePrecio_   = r => '=IF(B' + r + '="","",IFERROR(INDEX(' + R_("Inventario", "D") + ",MATCH(B" + r + "," + R_("Inventario", "A") + ",0)),0))";
-const fDetalleSubtotal_ = r => '=IF(OR(B' + r + '="",D' + r + '=""),"",D' + r + "*E" + r + ")";
-const fDetalleEstado_   = r => '=IF(A' + r + '="","",IFERROR(INDEX(' + R_("Pedidos", "L") + ",MATCH(A" + r + "," + R_("Pedidos", "A") + ',0)),"Pedido no existe"))';
+const fPedidoCant_     = r => F_('=IF(A' + r + '="","",SUMIFS(' + R_("Detalle", "D") + "," + R_("Detalle", "A") + ",A" + r + "))");
+const fPedidoSubtotal_ = r => F_('=IF(A' + r + '="","",SUMIFS(' + R_("Detalle", "F") + "," + R_("Detalle", "A") + ",A" + r + "))");
+const fPedidoTotal_    = r => F_('=IF(A' + r + '="","",I' + r + "+N(J" + r + "))");
+const fDetalleProducto_ = r => F_('=IF(B' + r + '="","",IFERROR(INDEX(' + R_("Inventario", "B") + ",MATCH(B" + r + "," + R_("Inventario", "A") + ',0)),"SKU no existe"))');
+const fDetallePrecio_   = r => F_('=IF(B' + r + '="","",IFERROR(INDEX(' + R_("Inventario", "D") + ",MATCH(B" + r + "," + R_("Inventario", "A") + ",0)),0))");
+const fDetalleSubtotal_ = r => F_('=IF(OR(B' + r + '="",D' + r + '=""),"",D' + r + "*E" + r + ")");
+const fDetalleEstado_   = r => F_('=IF(A' + r + '="","",IFERROR(INDEX(' + R_("Pedidos", "L") + ",MATCH(A" + r + "," + R_("Pedidos", "A") + ',0)),"Pedido no existe"))');
 
 function preciosInventario_(ss) {
   const sh = ss.getSheetByName(HOJA_INVENTARIO);
@@ -191,6 +214,7 @@ function preciosInventario_(ss) {
  */
 function repararFormulas() {
   const ss = SpreadsheetApp.getActive();
+  separador_(true);   // vuelve a detectar el separador por si cambió la configuración regional
   const filas = ULTIMA_FILA - PRIMERA_FILA + 1;
   const rango = f => Array.from({ length: filas }, (_, i) => f(PRIMERA_FILA + i));
 
@@ -201,9 +225,12 @@ function repararFormulas() {
   const det = ss.getSheetByName(HOJA_DETALLE);
   det.getRange(PRIMERA_FILA, 3, filas, 1).setFormulas(rango(r => [fDetalleProducto_(r)]));
   det.getRange(PRIMERA_FILA, 6, filas, 2).setFormulas(rango(r => [fDetalleSubtotal_(r), fDetalleEstado_(r)]));
+  // Precio: se respeta el número guardado al momento del pedido; las celdas vacías o con fórmula
+  // (incluidas las que hayan quedado en #ERROR!) reciben la fórmula del precio actual.
   const precio = det.getRange(PRIMERA_FILA, 5, filas, 1);
   const pv = precio.getValues(), pf = precio.getFormulas();
-  pf.forEach((f, i) => { if (!f[0] && pv[i][0] === "") precio.getCell(i + 1, 1).setFormula(fDetallePrecio_(PRIMERA_FILA + i)); });
+  precio.setFormulas(pf.map((f, i) => [(!f[0] && pv[i][0] !== "") ? "" : fDetallePrecio_(PRIMERA_FILA + i)]));
+  pf.forEach((f, i) => { if (!f[0] && pv[i][0] !== "") precio.getCell(i + 1, 1).setValue(pv[i][0]); });
 
   const inv = ss.getSheetByName(HOJA_INVENTARIO);
   const ni = inv.getLastRow() - PRIMERA_FILA + 1;
@@ -218,8 +245,8 @@ function repararFormulas() {
         "=SUMIFS(" + R_("Detalle", "D") + "," + R_("Detalle", "B") + ",A" + r + "," + R_("Detalle", "G") + ',"Pendiente")',
         "=E" + r + "+F" + r + "-G" + r,
         "=I" + r + "-H" + r
-      ]]);
-      inv.getRange(r, 12).setFormula('=IF(J' + r + '<=0,"Agotado",IF(J' + r + '<=K' + r + ',"Pocas unidades","Disponible"))');
+      ].map(F_)]);
+      inv.getRange(r, 12).setFormula(F_('=IF(J' + r + '<=0,"Agotado",IF(J' + r + '<=K' + r + ',"Pocas unidades","Disponible"))'));
     });
   }
 
@@ -231,7 +258,7 @@ function repararFormulas() {
     ['=SUMIFS(' + R_("Pedidos", "K") + "," + R_("Pedidos", "L") + ',"Confirmado")'],
     ['=COUNTIF(' + R_("Inventario", "L") + ',"Agotado")'],
     ['=COUNTIF(' + R_("Inventario", "L") + ',"Pocas unidades")']
-  ]);
+  ].map(f => [F_(f[0])]));
 
   // Lista Estado (Pendiente/Confirmado/Cancelado) en toda la columna de Pedidos.
   ped.getRange(PRIMERA_FILA, 12, filas, 1).setDataValidation(
