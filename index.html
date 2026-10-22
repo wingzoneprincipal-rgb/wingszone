@@ -589,9 +589,20 @@ function priceOf(sku){
   return n > 0 ? n : bySku[sku].variant.price;
 }
 function isVisible(sku){ return !(stock && stock[sku] && stock[sku].visible === false); }
+/* Si la hoja no manda un número válido (por ejemplo, una fórmula en #ERROR!), el stock se toma
+   como desconocido: el producto se muestra disponible y la disponibilidad se confirma por WhatsApp.
+   Así un error en la hoja nunca deja la página "agotada". */
+const STOCK_STATES = ["Disponible", "Pocas unidades", "Agotado"];
+function stockKnown(sku){
+  const s = stock && stock[sku];
+  if (!s) return false;
+  const n = Number(s.disponible);
+  if (s.disponible === null || s.disponible === "" || !Number.isFinite(n)) return false;
+  return !s.estado || STOCK_STATES.includes(s.estado);
+}
 function availableOf(sku){
-  if (!stock || !stock[sku]) return Infinity;
-  return Math.max(0, Math.floor(Number(stock[sku].disponible) || 0));
+  if (!stockKnown(sku)) return Infinity;
+  return Math.max(0, Math.floor(Number(stock[sku].disponible)));
 }
 function stateOf(sku){
   const a = availableOf(sku);

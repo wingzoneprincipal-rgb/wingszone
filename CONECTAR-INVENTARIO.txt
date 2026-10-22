@@ -58,19 +58,20 @@ SI CAMBIAS EL CÓDIGO
   Implementar > Gestionar implementaciones > lápiz > Versión: Nueva versión > Implementar.
   Así la URL sigue siendo la misma.
 
-SI LOS PEDIDOS LLEGAN SIN TOTAL O EL INVENTARIO NO SE MUEVE
-----------------------------------------------------------
-  Pasa cuando se borran filas completas (por ejemplo el pedido de ejemplo P-0001) y se
-  pierden las fórmulas. El código actual escribe las fórmulas en cada pedido nuevo, y la
-  función repararFormulas las vuelve a poner en toda la hoja:
+COLUMNAS CALCULADAS (SIN FÓRMULAS)
+----------------------------------
+  Totales de pedidos, Producto/Precio/Subtotal/Estado en Detalle, y Entradas, Salidas,
+  Reservado, Stock actual, Disponible y Estado en Inventario los calcula el script y los
+  escribe como números. Se actualizan solos cuando llega un pedido y cuando editas
+  Pedidos, Detalle, Movimientos o Inventario (por ejemplo, al poner un pedido en Confirmado
+  o escribir el domicilio). No escribas en esas columnas: el script las sobrescribe.
+
+  Si ves #ERROR!, celdas vacías o totales viejos:
   1. Pega el Codigo.gs más reciente en Apps Script y guarda.
   2. Arriba, en la lista de funciones, elige  repararFormulas  y toca Ejecutar.
-     (La primera vez puede pedir permisos otra vez: Revisar permisos > tu cuenta > Permitir.)
+     (Si pide permisos: Revisar permisos > tu cuenta > Configuración avanzada > Permitir.)
   3. Publica una nueva versión: Implementar > Gestionar implementaciones > lápiz >
      Versión: Nueva versión > Implementar.
-  Para borrar un pedido de prueba, borra solo el contenido de las columnas azules
-  (ID, cliente, cantidad, etc.), no la fila completa. Si se te olvida, vuelve a correr
-  repararFormulas.
 
 RESEÑAS DE CLIENTES
 -------------------
