@@ -222,6 +222,11 @@ dialog#cart::backdrop{background:rgba(26,26,26,.6)}
 .loc-msg:empty{display:none}
 .loc-map{height:240px;margin-top:8px;border-radius:8px;border:2px solid var(--line);overflow:hidden;background:var(--mist)}
 .loc-map[hidden]{display:none}
+.consent{margin-top:14px;display:grid;gap:8px}
+.check{display:flex;align-items:flex-start;gap:10px;font-size:.95rem;cursor:pointer}
+.check input{width:18px;height:18px;margin:2px 0 0;flex:none;accent-color:var(--red)}
+.check.bad{color:var(--bad)}
+.check a{font-weight:700}
 fieldset.pay{border:0;margin:14px 0 0;padding:0;min-width:0}
 fieldset.pay legend{font-weight:700;padding:0;margin-bottom:6px}
 .pay-opts{display:grid;gap:6px}
@@ -338,6 +343,7 @@ fieldset.pay.bad .pay-opt{border-color:var(--bad)}
       </div>
     </div>
     <p class="fine">El valor del domicilio depende de tu zona y se confirma por WhatsApp.</p>
+    <p class="fine" style="margin-top:8px"><a href="privacidad.html" style="color:inherit">Política de tratamiento de datos personales</a></p>
   </div>
 </section>
 
@@ -565,6 +571,15 @@ const optSel = {};        // id de combo -> elecciones actuales en la tarjeta de
 let coupon = "";
 let payment = "";         // id del medio de pago elegido
 let cashWith = "";        // con cuánto paga (solo efectivo)
+let confirmBy = "whatsapp"; // cómo prefiere que le confirmen: whatsapp | llamada | cualquiera
+let wantsPromos = false;  // aceptó recibir promociones (opcional)
+let acceptsData = false;  // aceptó la política de tratamiento de datos (obligatorio)
+const CONFIRM_OPTS = [
+  { id: "whatsapp",   label: "WhatsApp", hint: "Recomendado" },
+  { id: "llamada",    label: "Llamada" },
+  { id: "cualquiera", label: "Cualquiera de los dos" }
+];
+const needsPhone = () => confirmBy !== "whatsapp";
 let loc = null;           // { lat, lng, acc } ubicación de entrega marcada por el cliente
 let sentInfo = null;
 
@@ -890,6 +905,35 @@ function renderLocButtons(){
 }
 function locBlock(){ renderLocButtons(); return locBox; }
 
+function confirmText(){
+  return { whatsapp:"WhatsApp", llamada:"Llamada 📞", cualquiera:"WhatsApp o llamada" }[confirmBy] || "WhatsApp";
+}
+function confirmBlock(){
+  const box = el("fieldset", { class:"pay", id:"confirmBox" }, el("legend", { text:"¿Cómo prefieres que confirmemos tu pedido?" }));
+  const opts = el("div", { class:"pay-opts" });
+  CONFIRM_OPTS.forEach(o => {
+    opts.append(el("label", { class:"pay-opt" },
+      el("input", { type:"radio", name:"confirm", id:"confirm-" + o.id, value:o.id, checked: confirmBy === o.id,
+        onchange(){ confirmBy = o.id; renderCart(); const r = $("confirm-" + o.id); if (r) r.focus(); } }),
+      el("span", {}, o.label, o.hint ? el("small", { text:o.hint }) : null)));
+  });
+  box.append(opts);
+  if (needsPhone()) box.append(el("p", { class:"pay-note", text:"Escribe tu teléfono arriba para poder llamarte." }));
+  return box;
+}
+function consentBlock(){
+  return el("div", { class:"consent" },
+    el("label", { class:"check" },
+      el("input", { type:"checkbox", id:"f-promos", checked: wantsPromos, onchange(e){ wantsPromos = e.target.checked; } }),
+      el("span", { text:"Quiero recibir promociones y novedades de Wing Zone por WhatsApp. (Opcional)" })),
+    el("label", { class:"check", id:"dataBox" },
+      el("input", { type:"checkbox", id:"f-data", required:true, checked: acceptsData,
+        onchange(e){ acceptsData = e.target.checked; $("dataBox").classList.remove("bad"); } }),
+      el("span", {}, "Acepto la ",
+        el("a", { href:"privacidad.html", target:"_blank", rel:"noopener", text:"política de tratamiento de datos personales" }),
+        ". (Obligatorio)")));
+}
+
 function payText(){
   const m = PAYMENTS.find(x => x.id === payment);
   if (!m) return "";
@@ -932,7 +976,7 @@ function renderCart(){
       el("div", { class:"done", role:"status" },
         el("strong", { text:"Abrimos WhatsApp con tu pedido." }),
         el("p", { text:"Envía el mensaje para confirmarlo. Tu pedido " + sentInfo + " queda registrado cuando lo recibamos y lo confirmemos." }),
-        el("button", { class:"btn btn-red", type:"button", onclick(){ sentInfo = null; Object.keys(cart).forEach(k => delete cart[k]); coupon = ""; payment = ""; cashWith = ""; clearLoc(); CATEGORIES.forEach(c => c.products.forEach(refreshRow)); syncCart(); } }, "Empezar un pedido nuevo")));
+        el("button", { class:"btn btn-red", type:"button", onclick(){ sentInfo = null; Object.keys(cart).forEach(k => delete cart[k]); coupon = ""; payment = ""; cashWith = ""; confirmBy = "whatsapp"; wantsPromos = false; acceptsData = false; clearLoc(); CATEGORIES.forEach(c => c.products.forEach(refreshRow)); syncCart(); } }, "Empezar un pedido nuevo")));
     return;
   }
 
@@ -984,12 +1028,15 @@ function renderCart(){
     el("label", { for:id }, label, hint ? el("span", { class:"hint", text:" " + hint }) : null), input);
   body.append(
     field("f-name", "Nombre", el("input", { id:"f-name", type:"text", autocomplete:"name", required:true, value:keep.name || "" })),
-    field("f-phone", "Teléfono", el("input", { id:"f-phone", type:"tel", autocomplete:"tel", value:keep.phone || "" }), "(opcional)"),
+    field("f-phone", "Teléfono", el("input", { id:"f-phone", type:"tel", autocomplete:"tel", inputmode:"tel", required: needsPhone(), value:keep.phone || "" }),
+      needsPhone() ? "(obligatorio para llamarte)" : "(opcional)"),
     field("f-addr", "Dirección de entrega", el("input", { id:"f-addr", type:"text", autocomplete:"street-address", required:true, placeholder:"Calle, número, barrio o conjunto", value:keep.addr || "" })),
     locBlock(),
     field("f-mail", "Correo electrónico", el("input", { id:"f-mail", type:"email", autocomplete:"email", required:true, value:keep.mail || "" })),
     field("f-note", "Indicaciones del pedido", el("textarea", { id:"f-note", maxlength:"300", placeholder:"Ej: sin cebolla, timbre dañado, llamar al llegar", text:keep.note || "" }), "(opcional)"),
     payBlock(),
+    confirmBlock(),
+    consentBlock(),
     el("p", { class:"form-msg", id:"formMsg", role:"alert" }),
     el("button", { class:"btn btn-red send", type:"button", onclick:sendOrder },
       svg(ICONS.wa), "Enviar pedido por WhatsApp"));
@@ -1017,9 +1064,12 @@ function sendOrder(){
   flag("f-name", !f.name);
   flag("f-addr", !f.addr);
   flag("f-mail", !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(f.mail));
+  flag("f-phone", needsPhone() && f.phone.replace(/\D/g, "").length < 7);
   const payBad = !PAYMENTS.some(x => x.id === payment);
   $("payBox").classList.toggle("bad", payBad);
   if (payBad){ bad = true; firstBad = firstBad || "pay-" + PAYMENTS[0].id; }
+  $("dataBox").classList.toggle("bad", !acceptsData);
+  if (!acceptsData){ bad = true; firstBad = firstBad || "f-data"; }
   if (bad){
     msg.textContent = "Faltan datos. Revisa los campos marcados en rojo.";
     $(firstBad).focus(); return;
@@ -1043,6 +1093,8 @@ function sendOrder(){
     (cs && cs.ok) ? "*Cupón:* " + coupon + (cs.coupon.newOnly ? " (es mi primera compra)" : "") : null,
     "*Domicilio:* se confirma según mi zona",
     "*Pago:* " + payText(),
+    "*Confirmación:* " + confirmText(),
+    wantsPromos ? "✅ Acepta recibir promociones por WhatsApp" : null,
     "*Total productos:* " + fmt(t),
     f.note ? "" : null,
     f.note ? "*Indicaciones:* " + f.note : null
@@ -1056,7 +1108,8 @@ function sendOrder(){
       fetch(CONFIG.scriptUrl, { method:"POST", mode:"no-cors", keepalive:true,
         headers:{ "Content-Type":"text/plain;charset=utf-8" },
         body: JSON.stringify({ action:"order", id:o.id, fecha:o.fecha, cliente:f.name, telefono:f.phone,
-          direccion:f.addr, correo:f.mail, descripcion:description, cupon:couponNote, notas:"Pago: " + payText() + (loc ? " · Ubicación: " + locUrl() : "") + " · Pedido desde la página",
+          direccion:f.addr, correo:f.mail, descripcion:description, cupon:couponNote, notas:"Pago: " + payText() + " · Confirmar por: " + confirmText() + " · Promociones: " + (wantsPromos ? "Sí" : "No")
+            + " · Datos: aceptó política" + (loc ? " · Ubicación: " + locUrl() : "") + " · Pedido desde la página",
           items:o.items.map(i => ({ sku:i.sku, cantidad:i.qty })) }) }).catch(() => {});
     } catch (e) { /* si falla el registro, el pedido igual sale por WhatsApp */ }
   }
