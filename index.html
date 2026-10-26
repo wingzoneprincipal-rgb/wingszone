@@ -1043,7 +1043,7 @@ function renderCart(){
       needsPhone() ? "(obligatorio para llamarte)" : "(opcional)"),
     field("f-addr", "Dirección de entrega", el("input", { id:"f-addr", type:"text", autocomplete:"street-address", required:true, placeholder:"Calle, número, barrio o conjunto", value:keep.addr || "" })),
     locBlock(),
-    field("f-mail", "Correo electrónico", el("input", { id:"f-mail", type:"email", autocomplete:"email", required:true, value:keep.mail || "" })),
+    field("f-mail", "Correo electrónico", el("input", { id:"f-mail", type:"email", autocomplete:"email", value:keep.mail || "" }), "(opcional)"),
     field("f-note", "Indicaciones del pedido", el("textarea", { id:"f-note", maxlength:"300", placeholder:"Ej: sin cebolla, timbre dañado, llamar al llegar", text:keep.note || "" }), "(opcional)"),
     payBlock(),
     confirmBlock(),
@@ -1074,7 +1074,7 @@ function sendOrder(){
   const flag = (id, cond) => { mark(id, cond); if (cond){ bad = true; firstBad = firstBad || id; } };
   flag("f-name", !f.name);
   flag("f-addr", !f.addr);
-  flag("f-mail", !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(f.mail));
+  flag("f-mail", f.mail !== "" && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(f.mail));
   flag("f-phone", needsPhone() && f.phone.replace(/\D/g, "").length < 7);
   const payBad = !PAYMENTS.some(x => x.id === payment);
   $("payBox").classList.toggle("bad", payBad);
@@ -1097,7 +1097,7 @@ function sendOrder(){
     f.phone ? "*Teléfono:* " + f.phone : null,
     "*Dirección:* " + f.addr,
     loc ? "📍 *Ubicación:* " + locUrl() : null,
-    "*Correo:* " + f.mail, "",
+    f.mail ? "*Correo:* " + f.mail : null, "",
     "*Pedido:*", ...lines, "",
     "*Cantidad total:* " + units + (units === 1 ? " producto" : " productos"),
     "*Subtotal:* " + fmt(t),
