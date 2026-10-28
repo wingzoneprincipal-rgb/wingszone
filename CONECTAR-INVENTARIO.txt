@@ -58,6 +58,12 @@ SI CAMBIAS EL CÓDIGO
   Implementar > Gestionar implementaciones > lápiz > Versión: Nueva versión > Implementar.
   Así la URL sigue siendo la misma.
 
+DESCUENTOS (cupones de productos, ej. HALLOWEEN 2x1)
+---------------------------------------------------
+  Cuando un pedido trae un descuento, el script lo escribe en la columna N de Pedidos
+  ("Descuento (COP)") y lo resta del Total. El informe de ventas lo muestra en
+  "Descuentos (cupones y promos)". Requiere el Codigo.gs más reciente.
+
 COLUMNAS CALCULADAS (SIN FÓRMULAS)
 ----------------------------------
   Totales de pedidos, Producto/Precio/Subtotal/Estado en Detalle, y Entradas, Salidas,

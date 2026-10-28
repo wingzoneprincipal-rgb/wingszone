@@ -50,3 +50,9 @@ CERVEZAS EN LATA (una foto por marca)
 
 Si una marca no tiene foto propia, la página usa la foto general de la gaseosa
 (la de OlaClick). Si tampoco hay, muestra un ícono de llama.
+
+TEMPORADAS (Halloween, Navidad, etc.)
+  portada-halloween.jpg  Portada que se muestra solo en Halloween (28 oct a 1 nov).
+  Si la cambias por otra con el mismo nombre, se usa la nueva. Las fechas y textos de cada
+  temporada están en index.html, en SEASONS. Para ver cómo se ve en cualquier día:
+  wingzoneanapoima.co/?temporada=halloween   (y ?temporada=off para ver la normal)

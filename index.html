@@ -256,6 +256,31 @@ fieldset.pay.bad .pay-opt{border-color:var(--bad)}
   dialog#cart{margin:0 0 0 auto;height:100%;max-height:100%;border-radius:0;max-width:480px}
   .cart-in{max-height:100%;height:100%}
 }
+/* ---------- Temporada: Halloween (se activa sola por fechas, ver SEASONS) ---------- */
+.discount{color:var(--ok);font-weight:700}
+.badge.promo{background:#FFE7D1;color:#9A3A00}
+html.season-halloween{--sun:#FF8A1F;--hw-purple:#2A1240;--hw-purple-2:#4B1F70}
+html.season-halloween .top{background:var(--hw-purple)}
+html.season-halloween .hero{background:linear-gradient(180deg,var(--hw-purple) 0%,#120818 100%);position:relative;overflow:hidden}
+html.season-halloween .hero-img{filter:saturate(1.1) contrast(1.05)}
+html.season-halloween .contact{background:linear-gradient(180deg,#120818 0%,var(--hw-purple) 100%)}
+html.season-halloween .promos{background:linear-gradient(90deg,#FF8A1F 0%,#FFB347 100%)}
+html.season-halloween .cat h2::before{content:"🎃 "}
+html.season-halloween .tab.active{background:var(--hw-purple-2);border-color:var(--hw-purple-2)}
+.season-bar{display:none}
+html.season-halloween .season-bar{display:block;background:linear-gradient(90deg,var(--hw-purple-2),#FF8A1F);color:#fff;font-weight:700;text-align:center;padding:9px 16px;font-size:.98rem}
+.season-bar a{color:#fff;margin-left:8px;white-space:nowrap}
+.bats{position:absolute;inset:0;pointer-events:none;z-index:2}
+.bat{position:absolute;width:42px;height:22px;color:#120818;opacity:.85;animation:bat-fly 11s linear infinite}
+.bat svg{width:100%;height:100%;fill:currentColor;animation:bat-flap .28s ease-in-out infinite alternate;transform-origin:center}
+.bat:nth-child(2){top:18%;width:30px;animation-duration:14s;animation-delay:-4s}
+.bat:nth-child(3){top:34%;width:24px;animation-duration:17s;animation-delay:-9s;opacity:.6}
+.bat:nth-child(4){top:8%;width:36px;animation-duration:13s;animation-delay:-6.5s}
+.bat:nth-child(1){top:26%}
+@keyframes bat-fly{0%{transform:translate(-60px,0)}25%{transform:translate(25vw,-14px)}50%{transform:translate(50vw,10px)}75%{transform:translate(75vw,-8px)}100%{transform:translate(105vw,4px)}}
+@keyframes bat-flap{from{transform:scaleY(1)}to{transform:scaleY(.45)}}
+.web{position:absolute;top:0;right:0;width:150px;height:150px;opacity:.35;pointer-events:none;z-index:2;color:#fff}
+@media(prefers-reduced-motion:reduce){.bat{display:none}}
 @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}*{transition:none!important;animation:none!important}}
 </style>
 </head>
@@ -289,6 +314,8 @@ fieldset.pay.bad .pay-opt{border-color:var(--bad)}
     </button>
   </div>
 </header>
+
+<div class="season-bar" id="seasonBar" role="note"></div>
 
 <main id="inicio">
   <section class="hero">
@@ -420,9 +447,18 @@ const PAYMENTS = [
    - min      Valor mínimo del pedido (en pesos) para que aplique.
    - applied  Mensaje que ve el cliente cuando el cupón queda aplicado.
    - newOnly  true = solo primera compra (se verifica al confirmar por WhatsApp).
+   - from     Primer día de vigencia "AAAA-MM-DD" (opcional).
    - until    Último día de vigencia "AAAA-MM-DD" (opcional; vacío = sin vencimiento).
+   - promo    Descuento sobre productos (opcional). { type:"2x1", sku } = por cada 2 unidades
+              de ese producto, una es gratis. Sin promo, el cupón es de domicilio.
 */
 const COUPONS = [
+  { code: "HALLOWEEN", active: true, newOnly: false, min: 0, from: "2026-10-28", until: "2026-11-01",
+    promo: { type: "2x1", sku: "COMBO-6" },
+    tag: "🎃 Solo hasta el 1 de noviembre",
+    title: "¡Combo x6: pague 1 y lleve 2!",
+    text: "Pide 2 Combos x6 alitas, paga solo 1 con el cupón HALLOWEEN y comparte el susto. 👻 Válido del 28 de octubre al 1 de noviembre.",
+    applied: "¡Truco o trato! 🎃 Te llevas 2 Combos x6 y pagas 1." },
   { code: "PRIMERAWZ", active: true, newOnly: true, min: 18900, until: "",
     tag: "🔥 Solo tu primera compra",
     title: "¡Tu primer domicilio va por nuestra cuenta!",
@@ -440,9 +476,17 @@ function todayBogota(){
 function findCoupon(code){
   const c = COUPONS.find(x => x.code === code);
   if (!c || !c.active) return null;
-  if (c.until && todayBogota() > c.until) return null;
+  const hoy = todayBogota();
+  if (c.until && hoy > c.until) return null;
+  if (c.from && hoy < c.from) return null;
   return c;
 }
+/* Descuento en pesos de un cupón con promo (0 si es de domicilio). */
+function promoDiscount(c){
+  if (!c || !c.promo || c.promo.type !== "2x1" || !bySku[c.promo.sku]) return 0;
+  return Math.floor(qtyOf(c.promo.sku) / 2) * priceOf(c.promo.sku);
+}
+function currentDiscount(){ const cs = couponState(); return cs && cs.ok ? promoDiscount(cs.coupon) : 0; }
 
 /* Opciones de los combos (salsas y acompañamientos incluidos en el precio).
    En cada combo, "options" dice qué se elige y cuántas veces (count). */
@@ -522,6 +566,61 @@ const CATEGORIES = [
 /* Horario (hora de Colombia). 0 = domingo. Cierre 24 = medianoche. */
 const HOURS = { 0:[16,21], 1:[16,22], 2:null, 3:[16,22], 4:[16,24], 5:[16,24], 6:[16,24] };
 const DAYS = ["Domingo","Lunes","Martes","Miércoles","Jueves","Viernes","Sábado"];
+
+/* ============================================================
+   TEMPORADAS
+   ============================================================
+   Decoración y textos especiales entre dos fechas (hora de Colombia). Fuera de esas fechas
+   la página se ve normal sin tocar nada. Para ver cómo queda en cualquier día:
+   wingzoneanapoima.co/?temporada=halloween  ·  para ver la normal: ?temporada=off
+   - portada  Imagen especial (si no existe, usa la portada normal).
+   - names    Nombres especiales para mostrar en el menú (por id de producto o categoría).
+*/
+const SEASONS = [
+  { id: "halloween", from: "2026-10-28", until: "2026-11-01", themeColor: "#2A1240",
+    portada: "imagenes/portada-halloween.jpg,imagenes/portada-halloween.png,imagenes/portada-halloween.webp",
+    title: "Alitas embrujadas, hechas en Anapoima",
+    lead: "Semana de Halloween 🎃: Combo x6 pague 1 y lleve 2 con el cupón HALLOWEEN.",
+    bar: "🎃 Semana de Halloween · Combo x6 pague 1 y lleve 2 con el cupón HALLOWEEN · hasta el 1 de noviembre",
+    barLink: { text: "Ver combo →", href: "#p-c6" },
+    names: { combos: "Combos embrujados", aji: "Ají Brava de terror 💀", c6: "Combo x6 alitas 👻 2x1" } }
+];
+function activeSeason(){
+  let q = null;
+  try { q = new URLSearchParams(location.search).get("temporada"); } catch (e) {}
+  if (q === "off") return null;
+  if (q) return SEASONS.find(s => s.id === q) || null;
+  const d = new Intl.DateTimeFormat("en-CA", { timeZone:"America/Bogota" }).format(new Date());
+  return SEASONS.find(s => d >= s.from && d <= s.until) || null;
+}
+const SEASON = activeSeason();
+const seasonName = (id, fallback) => (SEASON && SEASON.names && SEASON.names[id]) || fallback;
+function applySeason(){
+  if (!SEASON) return;
+  document.documentElement.classList.add("season-" + SEASON.id);
+  const meta = document.querySelector('meta[name="theme-color"]'); if (meta && SEASON.themeColor) meta.content = SEASON.themeColor;
+  if (SEASON.title) document.querySelector(".hero h1").textContent = SEASON.title;
+  if (SEASON.lead) document.querySelector(".hero .lead").textContent = SEASON.lead;
+  const bar = document.getElementById("seasonBar");
+  if (bar && SEASON.bar){
+    bar.textContent = SEASON.bar;
+    if (SEASON.barLink){ const a = document.createElement("a"); a.href = SEASON.barLink.href; a.textContent = SEASON.barLink.text; bar.append(" ", a); }
+  }
+  const hero = document.querySelector(".hero-img");
+  if (hero && SEASON.portada){
+    hero.dataset.try = SEASON.portada + "," + hero.dataset.try;
+    hero.src = SEASON.portada.split(",")[0];
+  }
+  if (SEASON.id === "halloween"){
+    const heroSec = document.querySelector(".hero");
+    const bat = '<svg viewBox="0 0 64 32" aria-hidden="true"><path d="M32 10c2-4 3-6 3-8 1 2 1 4 0 6 4-3 10-5 16-4-3 1-5 3-6 6 3-1 7-1 11 1-4 0-7 2-9 5-3-2-7-2-10 1-2-2-4-3-5-3s-3 1-5 3c-3-3-7-3-10-1-2-3-5-5-9-5 4-2 8-2 11-1-1-3-3-5-6-6 6-1 12 1 16 4-1-2-1-4 0-6 0 2 1 4 3 8z"/></svg>';
+    const bats = document.createElement("div"); bats.className = "bats"; bats.setAttribute("aria-hidden", "true");
+    bats.innerHTML = Array(4).fill('<div class="bat">' + bat + '</div>').join("");
+    const web = document.createElement("div"); web.className = "web"; web.setAttribute("aria-hidden", "true");
+    web.innerHTML = '<svg viewBox="0 0 100 100" fill="none" stroke="currentColor" stroke-width="1"><path d="M100 0L40 60M100 0L60 100M100 0L20 25M100 0L80 100M100 0L0 45"/><path d="M78 0Q80 12 100 18M56 0Q62 30 100 40M34 0Q44 48 100 62M14 4Q28 66 100 84"/></svg>';
+    heroSec.prepend(bats, web);
+  }
+}
 
 /* ============================================================
    UTILIDADES
@@ -709,7 +808,9 @@ function buildRow(p){
 
   const meta = el("div", { class:"meta" },
     el("span", { class:"badge " + st }, el("i"), st === "out" ? "Agotado" : st === "low" ? "Pocas unidades" : "Disponible"),
-    (CONFIG.showStockNumbers && a !== Infinity && a > 0) ? el("span", { class:"left", text:"Quedan " + a }) : null);
+    (CONFIG.showStockNumbers && a !== Infinity && a > 0) ? el("span", { class:"left", text:"Quedan " + a }) : null,
+    ...COUPONS.filter(c => c.promo && c.promo.sku === sku && findCoupon(c.code))
+      .map(c => el("span", { class:"badge promo", text:"🎃 2x1 con " + c.code })));
 
   let pick = null;
   if (visibles.length > 1){
@@ -758,7 +859,7 @@ function buildRow(p){
 
   return el("article", { class:"line-item", id:"p-" + p.id },
     thumb,
-    el("div", { class:"item-body" }, el("h3", { text:p.name }), el("p", { text:p.desc }), meta, pick, opts),
+    el("div", { class:"item-body" }, el("h3", { text:seasonName(p.id, p.name) }), el("p", { text:p.desc }), meta, pick, opts),
     el("div", { class:"buy" }, el("span", { class:"price", text:fmt(priceOf(sku)) }), action));
 }
 function refreshRow(p){
@@ -772,10 +873,10 @@ function renderCatalog(){
   root.textContent = ""; tabs.textContent = "";
   CATEGORIES.forEach(c => {
     const sec = el("section", { class:"cat", id:"cat-" + c.id, "aria-labelledby":"h-" + c.id },
-      el("h2", { id:"h-" + c.id, text:c.name }), el("p", { class:"cat-note", text:c.note }));
+      el("h2", { id:"h-" + c.id, text:seasonName(c.id, c.name) }), el("p", { class:"cat-note", text:c.note }));
     c.products.forEach(p => { const r = buildRow(p); if (r){ productEls[p.id] = r; sec.append(r); } });
     root.append(sec);
-    tabs.append(el("a", { class:"tab", href:"#cat-" + c.id, "data-cat":c.id, text:c.name }));
+    tabs.append(el("a", { class:"tab", href:"#cat-" + c.id, "data-cat":c.id, text:seasonName(c.id, c.name) }));
   });
   spy();
 }
@@ -827,7 +928,7 @@ function syncCart(){
   $("countTop").textContent = n;
   $("cartbar").classList.toggle("show", n > 0);
   $("barText").textContent = n + (n === 1 ? " producto en tu pedido" : " productos en tu pedido");
-  $("barTotal").textContent = fmt(t);
+  $("barTotal").textContent = fmt(t - currentDiscount());
   if ($("cart").open) renderCart();
 }
 function couponState(){
@@ -836,6 +937,12 @@ function couponState(){
   if (!c) return { ok:false, msg:"Ese código no existe o ya no está vigente. Revisa que esté bien escrito." };
   const t = subtotal();
   if (t < c.min) return { ok:false, msg:"Este código necesita un pedido de al menos " + fmt(c.min) + ". Te faltan " + fmt(c.min - t) + "." };
+  if (c.promo && c.promo.type === "2x1" && bySku[c.promo.sku]){
+    const name = bySku[c.promo.sku].product.name, q = qtyOf(c.promo.sku);
+    if (q < 2) return { ok:false, msg:"Agrega 2 " + name + " para aplicar el 2x1" + (q ? " (llevas 1)." : ".") };
+    const extra = q % 2 ? " Agrega 1 más y llévate otro gratis." : "";
+    return { ok:true, msg:c.applied + " Ahorras " + fmt(promoDiscount(c)) + "." + extra, coupon:c };
+  }
   return { ok:true, msg:c.applied, coupon:c };
 }
 
@@ -1028,12 +1135,13 @@ function renderCart(){
         el("button", { class:"btn btn-red", type:"button", onclick(){ coupon = $("f-coupon").value.trim().toUpperCase(); syncCart(); } }, "Aplicar")),
       el("p", { class:"coupon-msg " + (cs ? (cs.ok ? "ok" : "bad") : ""), id:"couponMsg", "aria-live":"polite", text: cs ? cs.msg : "" })));
 
-  const t = subtotal(), applied = cs && cs.ok;
+  const t = subtotal(), applied = cs && cs.ok, desc = applied ? promoDiscount(cs.coupon) : 0;
   body.append(el("div", { class:"sum" },
     el("div", {}, el("span", { text:"Subtotal" }), el("span", { text:fmt(t) })),
-    applied ? el("div", { class:"small" }, el("span", { text:"Cupón " + coupon }), el("span", { text:"Se aplica al domicilio" })) : null,
+    desc ? el("div", { class:"discount" }, el("span", { text:"Descuento " + coupon + " (2x1)" }), el("span", { text:"−" + fmt(desc) })) : null,
+    applied && !desc ? el("div", { class:"small" }, el("span", { text:"Cupón " + coupon }), el("span", { text:"Se aplica al domicilio" })) : null,
     el("div", { class:"small" }, el("span", { text:"Domicilio" }), el("span", { text:"Se confirma por WhatsApp" })),
-    el("div", { class:"total" }, el("span", { text:"Total productos" }), el("span", { text:fmt(t) }))));
+    el("div", { class:"total" }, el("span", { text:"Total productos" }), el("span", { text:fmt(t - desc) }))));
 
   const field = (id, label, input, hint) => el("div", { class:"field" },
     el("label", { for:id }, label, hint ? el("span", { class:"hint", text:" " + hint }) : null), input);
@@ -1089,6 +1197,7 @@ function sendOrder(){
   if (coupon && cs && !cs.ok){ msg.textContent = "El cupón no aplica: " + cs.msg; $("f-coupon").focus(); return; }
 
   const o = buildOrder(), t = subtotal();
+  const desc = (cs && cs.ok) ? promoDiscount(cs.coupon) : 0;
   const units = o.items.reduce((s, i) => s + i.qty, 0);
   const lines = o.items.map(i => "• " + i.qty + " x " + i.name + " — " + fmt(i.qty * i.unit) + (i.note ? " (" + i.note + ")" : ""));
   const text = [
@@ -1102,29 +1211,31 @@ function sendOrder(){
     "*Cantidad total:* " + units + (units === 1 ? " producto" : " productos"),
     "*Subtotal:* " + fmt(t),
     (cs && cs.ok) ? "*Cupón:* " + coupon + (cs.coupon.newOnly ? " (es mi primera compra)" : "") : null,
+    desc ? "*Descuento:* −" + fmt(desc) + " (" + coupon + ": 2x1 en " + bySku[cs.coupon.promo.sku].product.name + ")" : null,
     "*Domicilio:* se confirma según mi zona",
     "*Pago:* " + payText(),
     "*Confirmación:* " + confirmText(),
     wantsPromos ? "✅ Acepta recibir promociones por WhatsApp" : null,
-    "*Total productos:* " + fmt(t),
+    "*Total productos:* " + fmt(t - desc),
     f.note ? "" : null,
     f.note ? "*Indicaciones:* " + f.note : null
   ].filter(x => x !== null).join("\n");
 
   const description = o.items.map(i => i.qty + " x " + i.name + (i.note ? " (" + i.note + ")" : "")).join("; ")
                     + (f.note ? " | Indicaciones: " + f.note : "");
-  const couponNote = (cs && cs.ok) ? coupon + (cs.coupon.newOnly ? " (primera compra, verificar)" : "") : "";
+  const couponNote = (cs && cs.ok) ? coupon + (cs.coupon.newOnly ? " (primera compra, verificar)" : "")
+                   + (desc ? " (2x1, descuento " + fmt(desc) + ")" : "") : "";
   if (CONFIG.scriptUrl){
     try {
       fetch(CONFIG.scriptUrl, { method:"POST", mode:"no-cors", keepalive:true,
         headers:{ "Content-Type":"text/plain;charset=utf-8" },
         body: JSON.stringify({ action:"order", id:o.id, fecha:o.fecha, cliente:f.name, telefono:f.phone,
-          direccion:f.addr, correo:f.mail, descripcion:description, cupon:couponNote, notas:"Pago: " + payText() + " · Confirmar por: " + confirmText() + " · Promociones: " + (wantsPromos ? "Sí" : "No")
+          direccion:f.addr, correo:f.mail, descripcion:description, cupon:couponNote, descuento:desc, notas:"Pago: " + payText() + " · Confirmar por: " + confirmText() + " · Promociones: " + (wantsPromos ? "Sí" : "No")
             + " · Datos: aceptó política" + (loc ? " · Ubicación: " + locUrl() : "") + " · Pedido desde la página",
           items:o.items.map(i => ({ sku:i.sku, cantidad:i.qty })) }) }).catch(() => {});
     } catch (e) { /* si falla el registro, el pedido igual sale por WhatsApp */ }
   }
-  track("Purchase", { value:t, currency:"COP", num_items:units, content_type:"product",
+  track("Purchase", { value:t - desc, currency:"COP", num_items:units, content_type:"product",
     content_ids:o.items.map(i => i.sku), order_id:o.id });
   const url = "https://wa.me/" + CONFIG.whatsapp + "?text=" + encodeURIComponent(text);
   const w = window.open(url, "_blank", "noopener");
@@ -1249,6 +1360,7 @@ $("cart").addEventListener("click", e => { if (e.target === $("cart")) $("cart")
 
 /* Logo y portada: buscan primero en la carpeta "imagenes" (logo.jpg/png/webp y
    portada.jpg/png/webp). Si no hay, usan logo.jpg y portada.jpg de la carpeta principal. */
+applySeason();   // antes de las imágenes: la temporada puede cambiar la portada
 document.querySelectorAll("img[data-try]").forEach(img => {
   const list = img.dataset.try.split(",");
   let i = 0;

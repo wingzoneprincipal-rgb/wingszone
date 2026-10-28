@@ -135,6 +135,10 @@ function registrarPedido_(d) {
     texto_(d.correo, 150), texto_(d.descripcion, 1000)
   ]]);
   pedidos.getRange(fp, 12, 1, 2).setValues([["Pendiente", texto_(notas, 300)]]);
+  // N Descuento: lo que el cliente se ahorra con un cupón de productos (ej. HALLOWEEN 2x1). Se resta del total.
+  const descuento = Math.max(0, Math.round(Number(d.descuento) || 0));
+  if (descuento) pedidos.getRange(fp, 14).setValue(descuento);
+  if (!String(pedidos.getRange(4, 14).getValue()).trim()) pedidos.getRange(4, 14).setValue("Descuento (COP)").setFontWeight("bold");
 
   // Detalle: A ID · B SKU · D Cantidad · E Precio (el del momento del pedido, así un cambio de
   //          precio después no altera ventas pasadas). C, F y G los calcula el script.
@@ -172,7 +176,7 @@ function calcular_(ss) {
   const mov = filasDatos_(ss.getSheetByName("Movimientos"), 4);       // B SKU · D Cantidad
   mov.forEach(f => { const p = porSku[String(f[1]).trim()]; if (p) p.entradas += num_(f[3]); });
 
-  const ped = filasDatos_(ss.getSheetByName(HOJA_PEDIDOS), 12);        // A ID · J Domicilio · L Estado
+  const ped = filasDatos_(ss.getSheetByName(HOJA_PEDIDOS), 14);        // A ID · J Domicilio · L Estado · N Descuento
   const estado = {};
   ped.forEach(f => { const id = String(f[0]).trim(); if (id) estado[id] = String(f[11]).trim(); });
 
@@ -201,7 +205,7 @@ function calcular_(ss) {
     const id = String(f[0]).trim();
     if (!id) return ["", "", ""];
     const t = porPedido[id] || { cant: 0, sub: 0 };
-    return [t.cant, t.sub, t.sub + num_(f[9])];
+    return [t.cant, t.sub, t.sub + num_(f[9]) - num_(f[13])];   // total = productos + domicilio − descuento
   });
   return { inv, detalle, pedidos, ped, movNombres: mov.map(f => { const s = String(f[1]).trim(); return [s ? (porSku[s] ? porSku[s].nombre : "SKU no existe") : ""]; }) };
 }
@@ -341,7 +345,7 @@ function datosInforme_(ss, desde, hasta) {
   const categoria = {};
   filasDatos_(ss.getSheetByName(HOJA_INVENTARIO), 3).forEach(f => { categoria[String(f[0]).trim()] = String(f[2] || "Otros"); });
 
-  const ped = filasDatos_(ss.getSheetByName(HOJA_PEDIDOS), 13);
+  const ped = filasDatos_(ss.getSheetByName(HOJA_PEDIDOS), 14);
   const det = filasDatos_(ss.getSheetByName(HOJA_DETALLE), 5);
   const pedidos = {};        // id -> info del pedido
   const historico = {};      // cliente -> nº de pedidos confirmados en toda la historia
@@ -351,7 +355,7 @@ function datosInforme_(ss, desde, hasta) {
     const cliente = String(f[3]).replace(/\D/g, "") || String(f[5]).trim().toLowerCase() || String(f[2]).trim().toLowerCase();
     const o = { id, fecha, clave: fecha ? clave_(fecha) : "", hora: fecha ? Number(Utilities.formatDate(fecha, TZ, "H")) : null,
       nombre: String(f[2]).trim(), cliente, desc: String(f[6] || ""), productos: num_(f[8]), domicilio: num_(f[9]),
-      total: num_(f[10]), estado: String(f[11]).trim(), notas: String(f[12] || "") };
+      total: num_(f[10]), estado: String(f[11]).trim(), notas: String(f[12] || ""), descuento: num_(f[13]) };
     pedidos[id] = o;
     if (o.estado === "Confirmado" && cliente) historico[cliente] = (historico[cliente] || 0) + 1;
   });
@@ -362,7 +366,8 @@ function datosInforme_(ss, desde, hasta) {
     const canc = Object.values(pedidos).filter(o => enRango(o, a, b) && o.estado === "Cancelado");
     const ventas = conf.reduce((t, o) => t + o.total, 0);
     return { pedidos: conf.length, ventas, productos: conf.reduce((t, o) => t + o.productos, 0),
-             domicilios: conf.reduce((t, o) => t + o.domicilio, 0), ticket: conf.length ? ventas / conf.length : 0,
+             domicilios: conf.reduce((t, o) => t + o.domicilio, 0), descuentos: conf.reduce((t, o) => t + o.descuento, 0),
+             ticket: conf.length ? ventas / conf.length : 0,
              cancelados: canc.length, valorCancelado: canc.reduce((t, o) => t + o.total, 0), lista: conf };
   };
   const dias = diasEntre_(desde, hasta) + 1;
@@ -499,12 +504,13 @@ function generarInforme() {
     ["Ventas totales (con domicilio)", a.ventas, p.ventas, variacion_(a.ventas, p.ventas)],
     ["Ventas de productos", a.productos, p.productos, variacion_(a.productos, p.productos)],
     ["Domicilios cobrados", a.domicilios, p.domicilios, variacion_(a.domicilios, p.domicilios)],
+    ["Descuentos (cupones y promos)", a.descuentos, p.descuentos, variacion_(a.descuentos, p.descuentos)],
     ["Pedidos confirmados", a.pedidos, p.pedidos, variacion_(a.pedidos, p.pedidos)],
     ["Ticket promedio", a.ticket, p.ticket, variacion_(a.ticket, p.ticket)],
     ["Pedidos cancelados", a.cancelados, p.cancelados, variacion_(a.cancelados, p.cancelados)],
     ["Valor de pedidos cancelados", a.valorCancelado, p.valorCancelado, variacion_(a.valorCancelado, p.valorCancelado)]
   ], [null, MONEDA, MONEDA, "+0%;-0%;0%"]);
-  [3, 5].forEach(k => sh.getRange(fila - 8 + k, 2, 1, 2).setNumberFormat(ENT)); // filas de pedidos y cancelados: cantidades, no pesos
+  [4, 6].forEach(k => sh.getRange(fila - 9 + k, 2, 1, 2).setNumberFormat(ENT)); // filas de pedidos y cancelados: cantidades, no pesos
 
   let f0 = fila;
   const rt = bloque(d.porMes ? "Ventas por mes" : "Ventas por día", [d.porMes ? "Mes" : "Día", "Pedidos", "Ventas"], d.serieTiempo, [null, ENT, MONEDA]);
@@ -577,6 +583,7 @@ function enviarInforme_(desde, hasta, titulo) {
       ["Pedidos confirmados", a.pedidos, p.pedidos, pct(variacion_(a.pedidos, p.pedidos))],
       ["Ticket promedio", $(a.ticket), $(p.ticket), pct(variacion_(a.ticket, p.ticket))],
       ["Domicilios cobrados", $(a.domicilios), $(p.domicilios), pct(variacion_(a.domicilios, p.domicilios))],
+      ["Descuentos", $(a.descuentos), $(p.descuentos), pct(variacion_(a.descuentos, p.descuentos))],
       ["Pedidos cancelados", a.cancelados, p.cancelados, ""]]) +
     "<h3>🍗 Top 5 productos</h3>" + tabla(["Producto", "Unidades", "Ventas"], d.ranking.slice(0, 5).map(r => [r[1], r[2], $(r[3])])) +
     "<h3>🌶️ Salsas más pedidas</h3>" + tabla(["Salsa", "Combos"], d.salsas.slice(0, 5).map(r => [r[0], r[1]])) +
